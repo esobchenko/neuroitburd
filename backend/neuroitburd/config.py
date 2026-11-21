@@ -21,6 +21,7 @@ DEFAULT_NEGATIVE_PROMPT = (
 )
 
 _ENV_PREFIX = "NEUROITBURD_"
+MAX_LORA_WEIGHT = 2.0
 
 
 class ConfigError(ValueError):
@@ -69,6 +70,14 @@ class Settings:
     max_upload_mb: float = 20.0
     max_queue_size: int = 20
     fake_pipeline: bool = False
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.lora_weight <= MAX_LORA_WEIGHT:
+            raise ConfigError(f"LoRA weight must be between 0 and {MAX_LORA_WEIGHT:g}")
+        if self.max_upload_mb <= 0:
+            raise ConfigError("Maximum upload size must be positive")
+        if self.max_queue_size < 1:
+            raise ConfigError("Maximum queue size must be at least 1")
 
     @classmethod
     def from_env(cls) -> Settings:

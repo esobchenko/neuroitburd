@@ -17,7 +17,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Scaffold and tooling | DONE | Packaging, `Settings`, logging, tooling in place. Full stack installed on Python 3.13: torch 2.15.0+cu132 (CUDA available, fp16 ok), diffusers 0.43.0, transformers 5.23.0, peft 0.22.0. SDXL img2img pipeline class imports. |
-| M1 Image utilities and validation | TODO | |
+| M1 Image utilities and validation | DONE | `image_utils.py` (load, validate, fit, atomic save), `params.py` (`GenerationParams`), `errors.py`. 67 tests pass. `lora_weight` validated in `Settings`, not per request. |
 | M2 Inference module | TODO | GPU smoke test needs approval (about 7 GB download) |
 | M3 CLI | TODO | |
 | M4 Job queue and worker | TODO | |
@@ -95,6 +95,8 @@ Module boundaries:
 | Module | Responsibility | Must not |
 |---|---|---|
 | `config.py` | `Settings` from `NEUROITBURD_*` env vars | import torch |
+| `errors.py` | shared exception hierarchy (`NeuroitburdError` and subclasses) | import anything heavy |
+| `params.py` | `GenerationParams`, the only parameter validation | import torch |
 | `image_utils.py` | load, validate, resize, save images | know about the API or jobs |
 | `pipeline.py` | `Stylizer` protocol, `SDXLStylizer`, `FakeStylizer`, device, LoRA, OOM handling | import FastAPI |
 | `jobs.py` | FIFO queue, single worker thread, job records | import FastAPI |

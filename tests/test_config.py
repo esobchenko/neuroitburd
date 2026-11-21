@@ -36,7 +36,16 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("key", "value"),
-    [("DEVICE", "tpu"), ("OFFLOAD", "sequential"), ("LORA_WEIGHT", "abc"), ("FAKE_PIPELINE", "x")],
+    [
+        ("DEVICE", "tpu"),
+        ("OFFLOAD", "sequential"),
+        ("LORA_WEIGHT", "abc"),
+        ("LORA_WEIGHT", "2.5"),
+        ("LORA_WEIGHT", "-0.1"),
+        ("MAX_UPLOAD_MB", "0"),
+        ("MAX_QUEUE_SIZE", "0"),
+        ("FAKE_PIPELINE", "x"),
+    ],
 )
 def test_invalid_values(monkeypatch: pytest.MonkeyPatch, key: str, value: str) -> None:
     monkeypatch.setenv(f"NEUROITBURD_{key}", value)

@@ -55,8 +55,9 @@ api.py ─┘   (config.py)         └─> image_utils.py (load/validate/resize
 ### M1 — Image utilities & parameter validation
 *Depends on: M0.*
 - `image_utils.py`: `load_image(path|bytes)` (EXIF transpose, RGB conversion incl. RGBA/palette/grayscale, format whitelist JPEG/PNG/WebP, max source dims e.g. 8192), `fit_to_model(img, max_pixels=1024*1024, multiple=8)`, `save_image`.
-- `GenerationParams` (pydantic model, shared by CLI/API): strength (0,1], steps 1–100, guidance 0–20, seed optional int ≥0, prompt/negative ≤ ~500 chars, lora_weight 0–2; cross-check `int(steps*strength) >= 1` (diffusers otherwise errors).
+- `GenerationParams` (pydantic model, shared by CLI/API): strength (0,1], steps 1–100, guidance 0–20, seed optional int ≥0, prompt/negative ≤ ~500 chars; cross-check `int(steps*strength) >= 1` (diffusers otherwise errors).
 - Custom exceptions: `InvalidImageError`, `InvalidParamsError`.
+- *As implemented:* exceptions live in `errors.py` (base `NeuroitburdError`, shared by every layer); `GenerationParams` lives in `params.py`. `lora_weight` (0–2) is validated in `Settings`, since it is a load-time setting, not a per-request one. `load_image` also rejects sides < 64 px and aspect ratios > 4:1 (SDXL degrades badly outside that); `save_image` writes atomically.
 
 **Acceptance:** unit tests for aspect-ratio preservation, multiple-of-8 dims, upscaling small images, EXIF rotation, RGBA→RGB, corrupt/unsupported file rejection, all validation bounds.
 
