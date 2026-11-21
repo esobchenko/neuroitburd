@@ -95,6 +95,8 @@ api.py ─┘   (config.py)         └─> image_utils.py (load/validate/resize
   - Consistent error body `{"detail": "..."}`; no tracebacks.
 - Run: `uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000` — **single process, no `--workers`, no `--reload` with the real model** (documented). Optional CORS for the Vite dev origin only (prefer Vite proxy).
 
+- *As implemented:* `api.app = create_app()` at module level for uvicorn. Health `status` is `starting`/`ok`/`error` and also returns `model_error`; `gpu` is read by `pipeline.gpu_info()` only when torch is already imported (so it is `null` in fake mode and while the model loads, and health never triggers a slow torch import). Upload limit: a `Content-Length` check in middleware rejects big bodies before they are spooled to disk, and the file read is capped as well (a chunked upload without `Content-Length` is still spooled; acceptable for a local app). New `UnsupportedImageError` (subclass of `InvalidImageError`) separates 415 (not JPEG/PNG/WebP) from 422 (corrupt, too small, extreme aspect ratio). Empty form fields mean "use the default". 503 covers a full queue, a failed model load and shutdown. A warning is logged when `WEB_CONCURRENCY` > 1. No CORS: the Vite dev server will proxy `/api` (M6).
+
 **Acceptance:** `TestClient` tests with fake stylizer for every endpoint's happy path + each error status; end-to-end poll until `completed` then fetch image bytes; `curl` manual check with `FAKE_PIPELINE=1`.
 
 ### M6 — Frontend

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from neuroitburd.errors import InvalidImageError, InvalidParamsError
+from neuroitburd.errors import InvalidImageError, InvalidParamsError, UnsupportedImageError
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,13 @@ def load_image(source: str | Path | bytes) -> Image.Image:
             img.load()
     except InvalidImageError:
         raise
-    except (UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning):
-        raise InvalidImageError(
+    except UnidentifiedImageError:
+        raise UnsupportedImageError(
             f"Cannot read {label}: not a supported image (use JPEG, PNG or WebP)"
+        ) from None
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise InvalidImageError(
+            f"Image {label} is too large; maximum side is {MAX_SOURCE_SIDE}px"
         ) from None
     except (OSError, SyntaxError, ValueError) as exc:
         logger.debug("Failed to decode %s: %s", label, exc)
@@ -62,7 +66,7 @@ def load_image(source: str | Path | bytes) -> Image.Image:
 def _validate_header(img: Image.Image, label: str) -> None:
     """Check format and dimensions before decoding pixel data."""
     if img.format not in SUPPORTED_FORMATS:
-        raise InvalidImageError(
+        raise UnsupportedImageError(
             f"Unsupported image format {img.format or 'unknown'} for {label}; use JPEG, PNG or WebP"
         )
     w, h = img.size

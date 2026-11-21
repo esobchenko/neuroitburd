@@ -14,6 +14,10 @@ class InvalidImageError(NeuroitburdError):
     """Input image is missing, unreadable, unsupported or has invalid dimensions."""
 
 
+class UnsupportedImageError(InvalidImageError):
+    """Input is not an image at all, or not one of the accepted formats (JPEG, PNG, WebP)."""
+
+
 class InvalidParamsError(NeuroitburdError):
     """Generation parameters are out of range or inconsistent."""
 

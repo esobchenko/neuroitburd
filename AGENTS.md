@@ -21,7 +21,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M2 Inference module | DONE | `pipeline.py`: `Stylizer` protocol, `SDXLStylizer`, `FakeStylizer`, `create_stylizer`, `resolve_device`. 90 unit tests pass (mocked, no GPU). GPU smoke test passed: fp16, no offload, 1176x880, 30 steps x 0.65 strength (19 effective): load 10.7 s, generate 6.2 s, peak allocated 8.05 GiB. |
 | M3 CLI | DONE | `cli.py` done (argparse over `pipeline` + `image_utils`, exit codes 2/3/4, plus 1 unexpected and 130 Ctrl-C). 118 tests pass (28 new in `test_cli.py`, incl. a `python -m` run in fake mode). Manual GPU run of the spec example passed (exit 0, 1176x880, seed 42, 5.6 s generation). |
 | M4 Job queue and worker | DONE | `jobs.py`: `JobManager` (FIFO queue, one worker thread that loads the model, `Condition`-guarded job table, `submit/get/wait/stop`), `Job`, `JobStatus`, `ModelStatus`; new `QueueFullError`. 135 tests pass (17 new in `test_jobs.py`, stable over 50 repeated runs). |
-| M5 FastAPI backend | TODO | |
+| M5 FastAPI backend | DONE | `api.py`: `create_app()` + module-level `app`; health, generate (202), job status, image endpoints; errors as `{"detail": "..."}` (413/415/422/404/503/500). `pipeline.gpu_info()`, `UnsupportedImageError`. 174 tests pass (34 new in `test_api.py`, 5 elsewhere). Manual curl check with `FAKE_PIPELINE=1` passed. |
 | M6 Frontend | BLOCKED | Node 20+ is not installed |
 | M7 Documentation and end-to-end validation | TODO | |
 

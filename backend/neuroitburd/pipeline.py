@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -98,6 +99,29 @@ def resolve_device(setting: str) -> str:
         logger.warning("CUDA not available; running on CPU (expect several minutes per image)")
         return "cpu"
     raise DeviceUnavailableError(f"Unknown device setting {setting!r}; use auto, cuda or cpu")
+
+
+def gpu_info() -> dict[str, Any] | None:
+    """Name and memory of CUDA device 0, or ``None`` if torch is not loaded or has no CUDA.
+
+    Never imports torch itself: in fake mode, or before the model loads, this returns
+    ``None`` instead of paying a multi-second import on the caller's thread.
+    """
+    torch = sys.modules.get("torch")
+    if torch is None:
+        return None
+    try:
+        if not torch.cuda.is_available():
+            return None
+        free, total = torch.cuda.mem_get_info(0)
+        return {
+            "name": str(torch.cuda.get_device_name(0)),
+            "total_mb": int(total) // 2**20,
+            "free_mb": int(free) // 2**20,
+        }
+    except Exception:
+        logger.debug("Could not query GPU info", exc_info=True)
+        return None
 
 
 def _free_cuda_memory(torch: ModuleType) -> None:

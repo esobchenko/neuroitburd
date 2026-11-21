@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from neuroitburd.errors import InvalidImageError, InvalidParamsError
+from neuroitburd.errors import InvalidImageError, InvalidParamsError, UnsupportedImageError
 from neuroitburd.image_utils import (
     DEFAULT_MAX_PIXELS,
     MAX_SOURCE_SIDE,
@@ -161,3 +161,22 @@ def test_save_formats_and_creates_dirs(tmp_path: Path, name: str, fmt: str) -> N
 def test_save_rejects_unknown_extension(tmp_path: Path) -> None:
     with pytest.raises(InvalidParamsError, match="extension"):
         save_image(Image.new("RGB", (64, 64)), tmp_path / "out.gif")
+
+
+def test_unsupported_formats_raise_subclass(tmp_path: Path) -> None:
+    bmp = tmp_path / "x.bmp"
+    Image.new("RGB", (100, 100)).save(bmp)
+    text = tmp_path / "x.png"
+    text.write_text("not an image")
+    for path in (bmp, text):
+        with pytest.raises(UnsupportedImageError):
+            load_image(path)
+
+
+def test_decompression_bomb_reported_as_too_large(monkeypatch: pytest.MonkeyPatch) -> None:
+    buf = io.BytesIO()
+    Image.new("RGB", (200, 200)).save(buf, format="PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)  # 40k px is now a "bomb"
+    with pytest.raises(InvalidImageError, match="too large") as exc_info:
+        load_image(buf.getvalue())
+    assert not isinstance(exc_info.value, UnsupportedImageError)
