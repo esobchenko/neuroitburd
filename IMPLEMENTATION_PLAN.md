@@ -115,6 +115,8 @@ api.py ─┘   (config.py)         └─> image_utils.py (load/validate/resize
 - `README.md`: overview, requirements, venv + CUDA torch install commands, backend/frontend setup, CLI usage, running web app (two terminals), LoRA usage (`NEUROITBURD_LORA_PATH`, `--lora`, expected SDXL-compatible format, future trigger token), VRAM notes/OOM tips, known limitations, single-process constraint.
 - Full real-GPU run through the web UI (with approval).
 
+- *As implemented:* the fresh clone was checked with the lightweight install (no torch) and fake mode; the full CUDA install was not repeated in the clone (it is the one this repo uses for the GPU runs). The check found that mypy failed without torch installed; fixed. The real-GPU web run used headless Chromium against the real backend (6.0 s per image on the server, total VRAM in use up to 11.5 of 11.6 GiB). Open item: without the ML stack, Starlette's TestClient prints a deprecation warning recommending `httpx2` (needs approval to add to the dev extras).
+
 **Acceptance:** fresh-clone following README reproduces CLI + web run; all tests/lint/typecheck green.
 
 ---

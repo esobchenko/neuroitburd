@@ -198,10 +198,11 @@ NEUROITBURD_LORA_PATH=models/roitburd-v1.safetensors NEUROITBURD_LORA_WEIGHT=0.8
 
 - **Style approximation only.** Base SDXL plus a prompt is not Roitburd's style. Flat,
   graphic images change little at strength 0.65; for photos try 0.65 to 0.8.
-- **GPU memory.** The default mode peaks at about 8 GiB (see below), which fits a 12 GB card
-  with ~1.3 GB used by the desktop. If generation fails with "GPU ran out of memory", close
-  other GPU applications or set `NEUROITBURD_OFFLOAD=model` (slower, much less VRAM). An
-  out-of-memory error fails only that job; the server keeps running.
+- **GPU memory.** PyTorch needs about 8 GiB at peak, but with its cache and the desktop the
+  whole 12 GB card is nearly full during generation (see below), so there is little room for
+  other GPU applications (games, browsers with GPU video, a second model). If generation
+  fails with "GPU ran out of memory", close them or set `NEUROITBURD_OFFLOAD=model` (slower,
+  much less VRAM). An out-of-memory error fails only that job; the server keeps running.
 - **Output size** is about 1 megapixel, not the original resolution. Inputs must be 64 to
   8192 px per side, aspect ratio at most 4:1, and (in the API) at most 20 MB.
 - **Jobs are in memory.** Restarting the backend forgets jobs (files in `outputs/` remain),
@@ -223,9 +224,11 @@ SDXL base 1.0 + `madebyollin/sdxl-vae-fp16-fix`, no LoRA:
 |---|---|
 | Model load (from local cache, cold) | 10.7 s |
 | Generation, 1176x880, 30 steps at strength 0.65 (19 effective steps) | 5.6 to 6.2 s |
-| Peak VRAM (`torch.cuda.max_memory_allocated`) | 8.05 GiB |
+| Peak VRAM allocated by PyTorch (`torch.cuda.max_memory_allocated`) | 8.05 GiB |
+| Total GPU memory in use during a web-UI generation (`nvidia-smi`, includes the desktop's ~1.7 GB and PyTorch's cache) | up to 11.5 of 11.6 GiB |
+| Web UI, click Generate to result shown (same settings, seed 42) | 6.3 s (6.0 s on the server) |
 
-Reproduce with `HF_HUB_OFFLINE=1 .venv/bin/pytest -m gpu -s`.
+Reproduce the first rows with `HF_HUB_OFFLINE=1 .venv/bin/pytest -m gpu -s`.
 
 ## Development
 

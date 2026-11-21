@@ -23,7 +23,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M4 Job queue and worker | DONE | `jobs.py`: `JobManager` (FIFO queue, one worker thread that loads the model, `Condition`-guarded job table, `submit/get/wait/stop`), `Job`, `JobStatus`, `ModelStatus`; new `QueueFullError`. 135 tests pass (17 new in `test_jobs.py`, stable over 50 repeated runs). |
 | M5 FastAPI backend | DONE | `api.py`: `create_app()` + module-level `app`; health, generate (202), job status, image endpoints; errors as `{"detail": "..."}` (413/415/422/404/503/500). `pipeline.gpu_info()`, `UnsupportedImageError`. 174 tests pass (34 new in `test_api.py`, 5 elsewhere). Manual curl check with `FAKE_PIPELINE=1` passed. |
 | M6 Frontend | DONE | Vite 7 + React 19 + TS + Tailwind 4 in `frontend/`; `api.ts`, `App.tsx`, `Dropzone`, `Controls`, `ImagePanel`, `StatusBar`; Vite proxy `/api` to port 8000. `tsc --noEmit` and `npm run build` pass. Headless-Chromium walkthrough against the fake backend: 19/19 checks (upload, errors, progress, result, download, mobile, failed job). |
-| M7 Documentation and end-to-end validation | IN PROGRESS | README rewritten (spec sections 1-7, config table, LoRA, VRAM/OOM, limitations). Fresh clone verified: `pip install -e ".[dev]"`, pytest/ruff/mypy, fake CLI, `npm ci` + build; it found mypy failing without torch (fixed in `pipeline._import_torch`). Remaining: real-GPU run through the web UI (needs approval). |
+| M7 Documentation and end-to-end validation | DONE | README rewritten (spec sections 1-7, config table, LoRA, VRAM/OOM, limitations). Fresh clone verified: `pip install -e ".[dev]"`, pytest/ruff/mypy, fake CLI, `npm ci` + build; it found mypy failing without torch (fixed in `pipeline._import_torch`). Real-GPU web UI run passed: progress 0-90%, done in 6.0 s server / 6.3 s in the browser, PNG download ok, total VRAM in use up to 11.5 of 11.6 GiB. |
 
 ## 2. Rules
 
@@ -131,5 +131,5 @@ General rules:
 - Node 20.19.4 and npm 9.2.0 are installed from the Ubuntu archive (apt). Upstream Node 20 support ended in April 2026; the frontend also works on Node 22/24 if you upgrade.
 - The SDXL base weights (fp16 variant) and `madebyollin/sdxl-vae-fp16-fix` are in the Hugging Face cache (checked 2026-11-21). The base repo's own `vae/` folder is not cached; it is not needed while `vae_id` is set.
 - NVIDIA driver 580 is installed. The default PyPI torch wheel (2.15.0+cu132) works with it, so no extra index is needed. The system CUDA toolkit (12.4) is not used by torch.
-- The desktop holds about 1.3 GB of VRAM at idle, which leaves roughly 10.9 GB for inference.
+- The desktop holds about 1.3 to 1.75 GB of VRAM at idle. During generation the card is nearly full (PyTorch peak 8.05 GiB allocated, up to 11.5 GiB in use in total), so avoid other GPU-heavy apps.
 - torchvision is not installed. transformers prints a harmless fallback warning about it, and SDXL img2img does not need it.
