@@ -1,0 +1,5 @@
+# Full install (CUDA). Equivalent to: pip install -e ".[ml,dev]"
+# On Linux, the default PyPI torch wheel (2.15, CUDA 13.2) works with NVIDIA driver >= 580.
+# For older drivers, add a matching PyTorch index, e.g.:
+#   --extra-index-url https://download.pytorch.org/whl/cu128
+-e .[ml,dev]

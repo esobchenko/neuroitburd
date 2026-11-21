@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Generated / large artifacts
+outputs/*
+!outputs/.gitkeep
+models/*
+!models/.gitkeep
+*.safetensors
+*.ckpt
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Env / editor
+.env
+.env.*
+.idea/
+.vscode/

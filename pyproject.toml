@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuroitburd"
+version = "0.1.0"
+description = "SDXL image-to-image stylization inspired by the painting of Oleksandr Roitburd (MVP)"
+readme = "README.md"
+requires-python = ">=3.11"
+# Core deps: enough to run the API, CLI and tests with the fake pipeline (no torch).
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "python-multipart>=0.0.9,<0.1",
+    "pydantic>=2.7,<3",
+    "pillow>=10.4,<14",
+]
+
+[project.optional-dependencies]
+# Heavy ML stack. Install torch from the CUDA index first (see README).
+ml = [
+    "torch>=2.6,<3",
+    "diffusers>=0.32,<1",
+    "transformers>=4.45,<6",
+    "accelerate>=1.0,<2",
+    "peft>=0.13,<1",
+    "safetensors>=0.4,<1",
+]
+dev = [
+    "pytest>=8,<10",
+    "httpx>=0.27,<1",
+    "ruff>=0.6,<1",
+    "mypy>=1.11,<3",
+]
+
+[project.scripts]
+neuroitburd = "neuroitburd.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "backend" }
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["gpu: requires CUDA GPU and downloaded SDXL weights (run with -m gpu)"]
+addopts = "-m 'not gpu'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["backend", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+files = ["backend"]
