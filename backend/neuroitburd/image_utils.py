@@ -124,18 +124,25 @@ def fit_to_model(
     return img.resize(size, Image.Resampling.LANCZOS)
 
 
+def output_format(path: str | Path) -> str:
+    """Return the Pillow format for an output path's extension, or raise ``InvalidParamsError``."""
+    suffix = Path(path).suffix
+    fmt = SAVE_FORMATS.get(suffix.lower())
+    if fmt is None:
+        raise InvalidParamsError(
+            f"Unsupported output extension {suffix or '(none)'!r}; "
+            f"use one of {', '.join(SAVE_FORMATS)}"
+        )
+    return fmt
+
+
 def save_image(img: Image.Image, path: str | Path) -> Path:
     """Save atomically (temp file + rename) so readers never see a partial file.
 
     The format follows the extension: .png, .jpg/.jpeg or .webp.
     """
     path = Path(path)
-    fmt = SAVE_FORMATS.get(path.suffix.lower())
-    if fmt is None:
-        raise InvalidParamsError(
-            f"Unsupported output extension {path.suffix or '(none)'!r}; "
-            f"use one of {', '.join(SAVE_FORMATS)}"
-        )
+    fmt = output_format(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=path.suffix)
     try:

@@ -19,7 +19,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M0 Scaffold and tooling | DONE | Packaging, `Settings`, logging, tooling in place. Full stack installed on Python 3.13: torch 2.15.0+cu132 (CUDA available, fp16 ok), diffusers 0.43.0, transformers 5.23.0, peft 0.22.0. SDXL img2img pipeline class imports. |
 | M1 Image utilities and validation | DONE | `image_utils.py` (load, validate, fit, atomic save), `params.py` (`GenerationParams`), `errors.py`. 67 tests pass. `lora_weight` validated in `Settings`, not per request. |
 | M2 Inference module | DONE | `pipeline.py`: `Stylizer` protocol, `SDXLStylizer`, `FakeStylizer`, `create_stylizer`, `resolve_device`. 90 unit tests pass (mocked, no GPU). GPU smoke test passed: fp16, no offload, 1176x880, 30 steps x 0.65 strength (19 effective): load 10.7 s, generate 6.2 s, peak allocated 8.05 GiB. |
-| M3 CLI | TODO | |
+| M3 CLI | DONE | `cli.py` done (argparse over `pipeline` + `image_utils`, exit codes 2/3/4, plus 1 unexpected and 130 Ctrl-C). 118 tests pass (28 new in `test_cli.py`, incl. a `python -m` run in fake mode). Manual GPU run of the spec example passed (exit 0, 1176x880, seed 42, 5.6 s generation). |
 | M4 Job queue and worker | TODO | |
 | M5 FastAPI backend | TODO | |
 | M6 Frontend | BLOCKED | Node 20+ is not installed |

@@ -73,6 +73,7 @@ api.py ─┘   (config.py)         └─> image_utils.py (load/validate/resize
 ### M3 — CLI
 *Depends on: M2.*
 - `cli.py` (argparse): flags exactly as spec plus `--device`, `--offload`. Logs all params + resolved size + seed (random seed generated and logged when omitted, for reproducibility). Exit codes: 2 bad args/input, 3 model/device/LoRA error, 4 generation/OOM. Creates output dir.
+- *As implemented:* `main(argv, stylizer_factory=None) -> int`; `--input` and `--output` are required (as in the spec example). Flags not given fall back to `GenerationParams` defaults and `NEUROITBURD_*` env settings; CLI flags override env. Everything cheap (params, env settings, output extension, input image, output directory) is validated before the model loads. Extra exit codes: 1 for unexpected errors (short message on stderr, traceback in the log only) and 130 on Ctrl-C. A single-line step counter goes to stderr only when it is a terminal. The output-extension check moved into `image_utils.output_format()` so the CLI and `save_image` share it.
 
 **Acceptance:** tests run `main([...])` with `FakeStylizer` injected → output file exists, correct size; missing input → exit 2 with message; manual GPU run of the spec's example command.
 
