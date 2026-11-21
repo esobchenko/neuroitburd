@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -50,6 +51,12 @@ class GenerationParams(BaseModel):
     def effective_steps(self) -> int:
         """Number of denoising steps img2img actually runs."""
         return int(self.steps * self.strength)
+
+    def with_resolved_seed(self) -> GenerationParams:
+        """Return a copy with a concrete random seed if none was given (for reproducibility)."""
+        if self.seed is not None:
+            return self
+        return self.model_copy(update={"seed": secrets.randbelow(MAX_SEED + 1)})
 
     @classmethod
     def create(cls, **values: Any) -> GenerationParams:

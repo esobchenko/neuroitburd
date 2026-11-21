@@ -18,7 +18,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 |---|---|---|
 | M0 Scaffold and tooling | DONE | Packaging, `Settings`, logging, tooling in place. Full stack installed on Python 3.13: torch 2.15.0+cu132 (CUDA available, fp16 ok), diffusers 0.43.0, transformers 5.23.0, peft 0.22.0. SDXL img2img pipeline class imports. |
 | M1 Image utilities and validation | DONE | `image_utils.py` (load, validate, fit, atomic save), `params.py` (`GenerationParams`), `errors.py`. 67 tests pass. `lora_weight` validated in `Settings`, not per request. |
-| M2 Inference module | TODO | GPU smoke test needs approval (about 7 GB download) |
+| M2 Inference module | DONE | `pipeline.py`: `Stylizer` protocol, `SDXLStylizer`, `FakeStylizer`, `create_stylizer`, `resolve_device`. 90 unit tests pass (mocked, no GPU). GPU smoke test passed: fp16, no offload, 1176x880, 30 steps x 0.65 strength (19 effective): load 10.7 s, generate 6.2 s, peak allocated 8.05 GiB. |
 | M3 CLI | TODO | |
 | M4 Job queue and worker | TODO | |
 | M5 FastAPI backend | TODO | |
@@ -129,7 +129,7 @@ General rules:
 
 - The system interpreter is Python 3.13.7. Check in M0 that torch and diffusers wheels install on it.
 - Node and npm are not installed, so M6 is blocked.
-- The SDXL weights are not in the Hugging Face cache.
+- The SDXL base weights (fp16 variant) and `madebyollin/sdxl-vae-fp16-fix` are in the Hugging Face cache (checked 2026-11-21). The base repo's own `vae/` folder is not cached; it is not needed while `vae_id` is set.
 - NVIDIA driver 580 is installed. The default PyPI torch wheel (2.15.0+cu132) works with it, so no extra index is needed. The system CUDA toolkit (12.4) is not used by torch.
 - The desktop holds about 1.3 GB of VRAM at idle, which leaves roughly 10.9 GB for inference.
 - torchvision is not installed. transformers prints a harmless fallback warning about it, and SDXL img2img does not need it.

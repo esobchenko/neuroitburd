@@ -61,3 +61,8 @@ python_version = "3.11"
 strict = true
 ignore_missing_imports = true
 files = ["backend"]
+
+[[tool.mypy.overrides]]
+# diffusers is only partially typed; pipeline.py is the single module allowed to call it.
+module = ["neuroitburd.pipeline"]
+disallow_untyped_calls = false

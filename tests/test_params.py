@@ -74,3 +74,11 @@ def test_frozen() -> None:
     p = GenerationParams.create()
     with pytest.raises(ValueError):
         p.steps = 10  # type: ignore[misc]
+
+
+def test_with_resolved_seed() -> None:
+    fixed = GenerationParams.create(seed=5)
+    assert fixed.with_resolved_seed() is fixed
+    resolved = GenerationParams.create(steps=12).with_resolved_seed()
+    assert resolved.seed is not None and 0 <= resolved.seed <= MAX_SEED
+    assert resolved.steps == 12
