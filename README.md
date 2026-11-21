@@ -60,6 +60,24 @@ Errors are JSON `{"detail": "..."}`: 422 invalid parameters or image (too small,
 extreme aspect ratio), 413 file too large, 415 not a JPEG/PNG/WebP image, 404 unknown job or
 image, 503 queue full (`NEUROITBURD_MAX_QUEUE_SIZE`, default 20) or model failed to load.
 
+## Web interface
+
+Needs Node 20.19+ (`sudo apt install nodejs npm` on Ubuntu 25.10 gives 20.19.4).
+
+```bash
+# Terminal 1: backend (add NEUROITBURD_FAKE_PIPELINE=1 to work on the UI without a GPU)
+.venv/bin/uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: frontend dev server on http://127.0.0.1:5173 (forwards /api to port 8000)
+cd frontend && npm install && npm run dev
+```
+
+Drop or choose a JPEG/PNG/WebP image, adjust strength, steps and seed (guidance and prompts
+are under "Advanced"), press Generate, then download the PNG. The header shows whether the
+model is loading, ready or failed. Set `NEUROITBURD_BACKEND_URL` to point the dev server at
+a backend on another address. `npm run build` type-checks and writes a static build to
+`frontend/dist/` (`npm run preview` serves it with the same `/api` forwarding).
+
 ## Measured performance (M2 smoke test, 2026-11-21)
 
 RTX 4070 SUPER (12 GB), fp16, whole pipeline on CUDA (`NEUROITBURD_OFFLOAD=none`),

@@ -22,7 +22,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M3 CLI | DONE | `cli.py` done (argparse over `pipeline` + `image_utils`, exit codes 2/3/4, plus 1 unexpected and 130 Ctrl-C). 118 tests pass (28 new in `test_cli.py`, incl. a `python -m` run in fake mode). Manual GPU run of the spec example passed (exit 0, 1176x880, seed 42, 5.6 s generation). |
 | M4 Job queue and worker | DONE | `jobs.py`: `JobManager` (FIFO queue, one worker thread that loads the model, `Condition`-guarded job table, `submit/get/wait/stop`), `Job`, `JobStatus`, `ModelStatus`; new `QueueFullError`. 135 tests pass (17 new in `test_jobs.py`, stable over 50 repeated runs). |
 | M5 FastAPI backend | DONE | `api.py`: `create_app()` + module-level `app`; health, generate (202), job status, image endpoints; errors as `{"detail": "..."}` (413/415/422/404/503/500). `pipeline.gpu_info()`, `UnsupportedImageError`. 174 tests pass (34 new in `test_api.py`, 5 elsewhere). Manual curl check with `FAKE_PIPELINE=1` passed. |
-| M6 Frontend | BLOCKED | Node 20+ is not installed |
+| M6 Frontend | DONE | Vite 7 + React 19 + TS + Tailwind 4 in `frontend/`; `api.ts`, `App.tsx`, `Dropzone`, `Controls`, `ImagePanel`, `StatusBar`; Vite proxy `/api` to port 8000. `tsc --noEmit` and `npm run build` pass. Headless-Chromium walkthrough against the fake backend: 19/19 checks (upload, errors, progress, result, download, mobile, failed job). |
 | M7 Documentation and end-to-end validation | TODO | |
 
 ## 2. Rules
@@ -128,7 +128,7 @@ General rules:
 ## 9. Environment notes (2026-11-21)
 
 - The system interpreter is Python 3.13.7. Check in M0 that torch and diffusers wheels install on it.
-- Node and npm are not installed, so M6 is blocked.
+- Node 20.19.4 and npm 9.2.0 are installed from the Ubuntu archive (apt). Upstream Node 20 support ended in April 2026; the frontend also works on Node 22/24 if you upgrade.
 - The SDXL base weights (fp16 variant) and `madebyollin/sdxl-vae-fp16-fix` are in the Hugging Face cache (checked 2026-11-21). The base repo's own `vae/` folder is not cached; it is not needed while `vae_id` is set.
 - NVIDIA driver 580 is installed. The default PyPI torch wheel (2.15.0+cu132) works with it, so no extra index is needed. The system CUDA toolkit (12.4) is not used by torch.
 - The desktop holds about 1.3 GB of VRAM at idle, which leaves roughly 10.9 GB for inference.
