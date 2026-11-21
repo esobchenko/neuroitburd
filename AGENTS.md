@@ -23,7 +23,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M4 Job queue and worker | DONE | `jobs.py`: `JobManager` (FIFO queue, one worker thread that loads the model, `Condition`-guarded job table, `submit/get/wait/stop`), `Job`, `JobStatus`, `ModelStatus`; new `QueueFullError`. 135 tests pass (17 new in `test_jobs.py`, stable over 50 repeated runs). |
 | M5 FastAPI backend | DONE | `api.py`: `create_app()` + module-level `app`; health, generate (202), job status, image endpoints; errors as `{"detail": "..."}` (413/415/422/404/503/500). `pipeline.gpu_info()`, `UnsupportedImageError`. 174 tests pass (34 new in `test_api.py`, 5 elsewhere). Manual curl check with `FAKE_PIPELINE=1` passed. |
 | M6 Frontend | DONE | Vite 7 + React 19 + TS + Tailwind 4 in `frontend/`; `api.ts`, `App.tsx`, `Dropzone`, `Controls`, `ImagePanel`, `StatusBar`; Vite proxy `/api` to port 8000. `tsc --noEmit` and `npm run build` pass. Headless-Chromium walkthrough against the fake backend: 19/19 checks (upload, errors, progress, result, download, mobile, failed job). |
-| M7 Documentation and end-to-end validation | TODO | |
+| M7 Documentation and end-to-end validation | IN PROGRESS | README rewritten (spec sections 1-7, config table, LoRA, VRAM/OOM, limitations). Fresh clone verified: `pip install -e ".[dev]"`, pytest/ruff/mypy, fake CLI, `npm ci` + build; it found mypy failing without torch (fixed in `pipeline._import_torch`). Remaining: real-GPU run through the web UI (needs approval). |
 
 ## 2. Rules
 

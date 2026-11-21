@@ -77,7 +77,8 @@ def _import_torch() -> ModuleType:
         raise ModelLoadError(
             'PyTorch is not installed; install the ML extras with: pip install -e ".[ml]"'
         ) from exc
-    return torch
+    module: ModuleType = torch  # typed even when torch is absent (mypy then sees Any)
+    return module
 
 
 def resolve_device(setting: str) -> str:
