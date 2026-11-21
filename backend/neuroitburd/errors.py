@@ -40,3 +40,7 @@ class GpuOutOfMemoryError(NeuroitburdError):
 
 class GenerationError(NeuroitburdError):
     """Unexpected failure inside the diffusion pipeline."""
+
+
+class QueueFullError(NeuroitburdError):
+    """Too many jobs are waiting; the client should retry later."""
