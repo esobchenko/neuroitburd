@@ -118,6 +118,7 @@ General rules:
 - Automated tests never download weights, use the network, or require a GPU. Use `FakeStylizer` or monkeypatched diffusers objects instead.
 - Mark real-model tests with `@pytest.mark.gpu`. They are skipped by default.
 - Write test files only under `tmp_path`, never into `outputs/`.
+- `examples/acapulco.jpg` is the reference source photo for manual runs, GPU checks and LoRA comparisons, so results stay comparable over time. Automated tests keep using small synthetic images.
 - Concurrency tests synchronize with events or barriers, not with sleep-based timing.
 
 ## 8. GPU and runtime constraints

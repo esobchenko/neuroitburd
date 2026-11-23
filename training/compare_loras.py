@@ -4,7 +4,7 @@ Row 1 is the photo and the app's current output without a LoRA. Each further row
 checkpoint at each ``--weights`` value, prompted with the trigger phrase.
 
 Usage:
-    HF_HUB_OFFLINE=1 python training/compare_loras.py --image photo.jpg \
+    HF_HUB_OFFLINE=1 python training/compare_loras.py \
         --loras models/loras/roitburd/roitburd_step*.safetensors --output grid.jpg
 """
 
@@ -39,7 +39,7 @@ def labelled(image: Image.Image, text: str) -> Image.Image:
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
     p = argparse.ArgumentParser(description="Compare LoRA checkpoints on one photo.")
-    p.add_argument("--image", type=Path, required=True)
+    p.add_argument("--image", type=Path, default=Path("examples/acapulco.jpg"))
     p.add_argument("--loras", type=Path, nargs="+", required=True)
     p.add_argument("--weights", type=float, nargs="+", default=[0.8, 1.0])
     p.add_argument("--strength", type=float, default=0.7)

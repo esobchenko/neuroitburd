@@ -94,12 +94,13 @@ Everything is configured with environment variables (no config file is read):
 
 ```bash
 .venv/bin/python -m neuroitburd.cli \
-  --input examples/input.jpg \
+  --input examples/acapulco.jpg \
   --output outputs/result.png \
   --strength 0.65 --steps 30 --guidance 7.0 --seed 42
 ```
 
-Put your own photo at `examples/input.jpg` (the folder is empty in the repo) or pass any path.
+`examples/acapulco.jpg` is the reference photo used for manual and GPU checks; pass any path
+to use your own.
 The installed `neuroitburd` command is the same as `python -m neuroitburd.cli`.
 
 | Option | Default | Meaning |
