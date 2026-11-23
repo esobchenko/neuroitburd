@@ -13,6 +13,7 @@ dist/
 outputs/*
 !outputs/.gitkeep
 models/*
+data/
 !models/.gitkeep
 *.safetensors
 *.ckpt

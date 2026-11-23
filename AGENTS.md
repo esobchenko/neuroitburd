@@ -24,6 +24,7 @@ Update this list at the end of every milestone. Statuses: `TODO`, `IN PROGRESS`,
 | M5 FastAPI backend | DONE | `api.py`: `create_app()` + module-level `app`; health, generate (202), job status, image endpoints; errors as `{"detail": "..."}` (413/415/422/404/503/500). `pipeline.gpu_info()`, `UnsupportedImageError`. 174 tests pass (34 new in `test_api.py`, 5 elsewhere). Manual curl check with `FAKE_PIPELINE=1` passed. |
 | M6 Frontend | DONE | Vite 7 + React 19 + TS + Tailwind 4 in `frontend/`; `api.ts`, `App.tsx`, `Dropzone`, `Controls`, `ImagePanel`, `StatusBar`; Vite proxy `/api` to port 8000. `tsc --noEmit` and `npm run build` pass. Headless-Chromium walkthrough against the fake backend: 19/19 checks (upload, errors, progress, result, download, mobile, failed job). |
 | M7 Documentation and end-to-end validation | DONE | README rewritten (spec sections 1-7, config table, LoRA, VRAM/OOM, limitations). Fresh clone verified: `pip install -e ".[dev]"`, pytest/ruff/mypy, fake CLI, `npm ci` + build; it found mypy failing without torch (fixed in `pipeline._import_torch`). Real-GPU web UI run passed: progress 0-90%, done in 6.0 s server / 6.3 s in the browser, PNG download ok, total VRAM in use up to 11.5 of 11.6 GiB. |
+| M8 Experimental: Roitburd style LoRA | IN PROGRESS | Added after the MVP at the user's request (lifts the LoRA-training non-goal for this milestone). Dataset prep done (30 paintings in `data/roitburd`, gitignored); trainer written; training run pending approval. |
 
 ## 2. Rules
 

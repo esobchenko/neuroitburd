@@ -45,6 +45,7 @@ where = ["backend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["training"]
 markers = ["gpu: requires CUDA GPU and downloaded SDXL weights (run with -m gpu)"]
 addopts = "-m 'not gpu'"
 
