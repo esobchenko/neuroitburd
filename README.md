@@ -2,18 +2,18 @@
 
 Turn a photo into an expressive, postmodern painting with SDXL image-to-image, inspired by
 the painting of Oleksandr Roitburd. This MVP has a CLI, a FastAPI backend with a single-GPU
-job queue, and a small React web interface. It is the foundation for a future
-Roitburd-specific LoRA; today it uses base SDXL plus a style prompt, so results are a
-**style approximation, not a Roitburd-trained model**.
+job queue, and a small React web interface. By default it uses base SDXL
+plus a style prompt, which is only a style approximation. An experimental Roitburd style
+LoRA, trained on a private set of his paintings, is described in section 8.
 
 ## 1. Overview and system requirements
 
 ```
-photo ──> image_utils (validate, fit to ~1 MP) ──> pipeline (SDXL img2img, optional LoRA) ──> PNG
-             ▲                                          ▲
-           cli.py                         jobs.py (FIFO queue, one worker thread)
-                                                         ▲
-                                     api.py (FastAPI) <── frontend/ (React, Vite)
+photo --> image_utils (validate, fit to ~1 MP) --> pipeline (SDXL img2img, optional LoRA) --> PNG
+              ^                                        ^
+            cli.py                       jobs.py (FIFO queue, one worker thread)
+                                                       ^
+                                   api.py (FastAPI) <-- frontend/ (React, Vite)
 ```
 
 | | Requirement |
@@ -83,8 +83,8 @@ Everything is configured with environment variables (no config file is read):
 | `NEUROITBURD_OUTPUT_DIR` | `outputs` | Results (`{job_id}.png`) and uploads (`uploads/`) |
 | `NEUROITBURD_LORA_PATH` | empty | Optional SDXL LoRA `.safetensors` file (see section 6) |
 | `NEUROITBURD_LORA_WEIGHT` | `0.8` | LoRA strength, 0 to 2 |
-| `NEUROITBURD_DEFAULT_PROMPT` | expressive postmodern oil painting… | Prompt used when a request has none |
-| `NEUROITBURD_DEFAULT_NEGATIVE_PROMPT` | photo, photorealistic, blurry… | Negative prompt used when a request has none |
+| `NEUROITBURD_DEFAULT_PROMPT` | expressive postmodern oil painting... | Prompt used when a request has none |
+| `NEUROITBURD_DEFAULT_NEGATIVE_PROMPT` | photo, photorealistic, blurry... | Negative prompt used when a request has none |
 | `NEUROITBURD_MAX_UPLOAD_MB` | `20` | Upload size limit for the API |
 | `NEUROITBURD_MAX_QUEUE_SIZE` | `20` | Jobs that may wait; more get HTTP 503 |
 | `NEUROITBURD_FAKE_PIPELINE` | `0` | `1` replaces SDXL with a cheap filter (no GPU, no torch); for development |
@@ -107,9 +107,9 @@ The installed `neuroitburd` command is the same as `python -m neuroitburd.cli`.
 |---|---|---|
 | `--input`, `--output` | required | Source image (JPEG/PNG/WebP); result path (`.png`, `.jpg`, `.jpeg` or `.webp`). Missing folders are created |
 | `--strength` | 0.65 | 0 to 1: how far to move away from the photo |
-| `--steps` | 30 | 1 to 100. img2img runs `steps × strength` denoising steps, which must be at least 1 |
+| `--steps` | 30 | 1 to 100. img2img runs `steps * strength` denoising steps, which must be at least 1 |
 | `--guidance` | 7.0 | 0 to 20: how strictly to follow the prompt |
-| `--seed` | random | 0 to 2³²−1. Without it a random seed is chosen and printed, so any result can be reproduced |
+| `--seed` | random | 0 to 2^32 - 1. Without it a random seed is chosen and printed, so any result can be reproduced |
 | `--prompt`, `--negative-prompt` | configured defaults | Override the style prompts (max 500 characters) |
 | `--lora`, `--lora-weight` | env settings | LoRA file and strength (see section 6) |
 | `--device`, `--offload` | env settings | Same as `NEUROITBURD_DEVICE` / `NEUROITBURD_OFFLOAD` |
@@ -127,20 +127,18 @@ both sides divisible by 8; for example a 4000x3000 photo becomes 1176x880.
 ### With make (shortcut)
 
 ```bash
-make start                     # backend + UI in the background, r8-2k Roitburd LoRA @ 0.8
+make start                     # backend + UI in the background, r8-2k Roitburd LoRA at 0.8
 make start LORA_WEIGHT=1.0     # stronger style; LORA=none for plain SDXL; FAKE=1 without a GPU
-make status                    # running? model loading / ready?
+make status                    # running? model loading or ready?
 make logs                      # follow both logs (.run/*.log)
 make stop                      # stop both
+make stylize IMG=photo.jpg STRENGTH=0.7   # one image from the command line
+make check                     # tests, lint, typecheck
 ```
 
 `make start` adds the trigger phrase `rtbrd style painting` to the default prompt when a LoRA
-is loaded. Other targets: `make train` (retrain with different hyperparameters, e.g.
-`make train NAME=r16 RANK=16 LR=5e-5 STEPS=3000`; it refuses to overwrite an existing LoRA
-unless `FORCE=1` and refuses to start while the UI holds the GPU), `make compare NAME=r16`
-(checkpoint grid on `examples/acapulco.jpg`), `make stylize IMG=... STRENGTH=...`,
-`make prepare SRC=<paintings folder> FORCE=1`, `make crops SRC=<paintings folder>` (native-resolution detail crops into `data/roitburd-detail`, trained with `EXTRA_DATA=data/roitburd-detail`), `make eval NAME=<run>` (fair comparison: 2 photos × 4 seeds against no LoRA and the default `r8-2k`, in `outputs/eval/<run>/`) and `make check`. Training also takes `MAX_T=750` (only the noise levels img2img uses), `NOISE_OFFSET=0.05` and `TARGETS=attn-ff-conv`. `make help` lists every
-variable and its default.
+is loaded. The training targets (`prepare`, `crops`, `train`, `compare`, `eval`) are
+described in section 8. `make help` lists every target, variable and default.
 
 ### By hand
 
@@ -185,20 +183,20 @@ extreme aspect ratio), 413 file too large, 415 not a JPEG/PNG/WebP image, 404 un
 image, 503 queue full, model failed to load, or server shutting down. A failed job reports
 its error in `/api/jobs/{job_id}` and does not block later jobs.
 
-## 6. Loading a future LoRA adapter
+## 6. Loading a LoRA adapter
 
 The pipeline already supports one LoRA adapter, applied when the model loads:
 
 ```bash
-cp ~/Downloads/roitburd-v1.safetensors models/   # models/ is git-ignored
+# models/ is git-ignored; any SDXL LoRA file works
 
 # Web app: set before starting the backend (restart to change it)
-NEUROITBURD_LORA_PATH=models/roitburd-v1.safetensors NEUROITBURD_LORA_WEIGHT=0.8 \
+NEUROITBURD_LORA_PATH=models/loras/r8-2k/r8-2k.safetensors NEUROITBURD_LORA_WEIGHT=0.8 \
   .venv/bin/uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000
 
 # CLI
 .venv/bin/python -m neuroitburd.cli --input photo.jpg --output outputs/r.png \
-  --lora models/roitburd-v1.safetensors --lora-weight 0.8
+  --lora models/loras/r8-2k/r8-2k.safetensors --lora-weight 0.8
 ```
 
 - The file must be a LoRA trained for **SDXL 1.0 base**, in `.safetensors` format (the
@@ -208,7 +206,7 @@ NEUROITBURD_LORA_PATH=models/roitburd-v1.safetensors NEUROITBURD_LORA_WEIGHT=0.8
   keys, so check the backend log.
 - `peft` is required; it is part of `requirements.txt`.
 - If the LoRA was trained with a trigger word, put it in the prompt: set
-  `NEUROITBURD_DEFAULT_PROMPT="roitburd style, an expressive postmodern oil painting…"`, or
+  `NEUROITBURD_DEFAULT_PROMPT="rtbrd style painting, an expressive postmodern oil painting..."`, or
   type it in the prompt field / `--prompt`.
 - Typical weights are 0.6 to 1.0; above 1 tends to over-bake. `/api/health` shows the loaded
   LoRA name and weight.
@@ -217,8 +215,9 @@ NEUROITBURD_LORA_PATH=models/roitburd-v1.safetensors NEUROITBURD_LORA_WEIGHT=0.8
 
 ## 7. Known limitations
 
-- **Style approximation only.** Base SDXL plus a prompt is not Roitburd's style. Flat,
-  graphic images change little at strength 0.65; for photos try 0.65 to 0.8.
+- **Style approximation only.** Base SDXL plus a prompt is not Roitburd's style, and the
+  experimental LoRA (section 8) only moves the output towards it. Flat, graphic images
+  change little at strength 0.65; for photos try 0.65 to 0.8.
 - **GPU memory.** PyTorch needs about 8 GiB at peak, but with its cache and the desktop the
   whole 12 GB card is nearly full during generation (see below), so there is little room for
   other GPU applications (games, browsers with GPU video, a second model). If generation
@@ -235,6 +234,72 @@ NEUROITBURD_LORA_PATH=models/roitburd-v1.safetensors NEUROITBURD_LORA_WEIGHT=0.8
 - **CPU mode** (`NEUROITBURD_DEVICE=cpu`) runs in fp32 and takes several minutes per image.
 - **Node 20** reached end of upstream support in April 2026. The frontend should also work
   on Node 22 or 24 (not tested yet).
+
+## 8. Experimental: Roitburd style LoRA
+
+A small SDXL LoRA trained on Roitburd paintings. The paintings are copyrighted, so the
+dataset (`data/`) and the LoRA files (`models/`) are git-ignored and are for personal,
+non-commercial experiments only. The current default, used by `make start`, is
+`models/loras/r8-2k/r8-2k.safetensors` at weight 0.8 with the trigger phrase
+`rtbrd style painting`.
+
+### Training workflow
+
+```bash
+make prepare SRC=<paintings folder> FORCE=1   # fit to ~1 MP, captions, into data/roitburd
+make crops SRC=<paintings folder>             # optional: detail crops into data/roitburd-detail
+make train NAME=my-run                        # rank 8, 2000 steps, about 17 min on a 4070 SUPER
+make compare NAME=my-run                      # checkpoints x weights on examples/acapulco.jpg
+make eval NAME=my-run                         # fair grid: 2 photos x 4 seeds vs no LoRA and r8-2k
+```
+
+`make train` refuses to overwrite an existing LoRA unless `FORCE=1`, and refuses to start
+while the web UI holds the GPU (`make stop` first). Useful options: `RANK`, `LR`, `STEPS`,
+`MAX_T=750` (train only on the noise levels img2img uses), `NOISE_OFFSET=0.05`,
+`TARGETS=attn-ff-conv` (also train feed-forward and conv layers) and
+`EXTRA_DATA=data/roitburd-detail` (add the detail crops). Results of `make eval` go to
+`outputs/eval/<run>/`.
+
+All runs below use 175 paintings, AdamW at 1e-4 with warmup and cosine decay, min-SNR
+gamma 5, 5% caption dropout and batch size 1. The grids show `examples/acapulco.jpg` at
+strength 0.7, 30 steps, LoRA weight 0.8 (0.6 for r64), seeds 42, 7, 1234 and 2026.
+
+### Sweep 1: rank and steps (2026-11-23)
+
+| Run | Rank / alpha | LR | Steps | Notes |
+|---|---|---|---|---|
+| no LoRA | | | | base SDXL with the style prompt |
+| r8 | 8 / 8 | 1e-4 | 4000 | clear Roitburd look |
+| r16-lr5e5 | 16 / 16 | 5e-5 | 3000 | almost the same as r8 |
+| r64 | 64 / 32 | 1e-4 | 4000 | overfits: invents objects and loses the composition |
+
+![Sweep 1 on acapulco.jpg](docs/images/sweep1_acapulco.jpg)
+
+Rank and step count barely matter between 8 and 32; rank 8 looks the same as rank 32 at a
+quarter of the file size. The seed changes the picture more than the LoRA does, which is why
+`make eval` compares every model over the same 4 seeds.
+
+### Sweep 2: training options (2026-11-24)
+
+All rank 8, 2000 steps.
+
+| Run | Data | Max timestep | Noise offset | Layers | Result |
+|---|---|---|---|---|---|
+| r8 (sweep 1) | paintings | 1000 | 0 | attention | reference, 4000 steps |
+| r8-2k | paintings | 1000 | 0 | attention | slightly more faithful than r8; strongest Roitburd character |
+| r8-t750 | paintings | 750 | 0.05 | attention | removes the learned signature, still turns people nude |
+| r8-detail | paintings + 62 detail crops | 750 | 0.05 | attention | best balance: keeps people and clothing in 3 of 4 seeds, richer texture |
+| r8-ff | paintings + 62 detail crops | 750 | 0.05 | attention, ff, conv | most faithful to the photo, mildest style |
+
+![Sweep 2 on acapulco.jpg](docs/images/sweep2_acapulco.jpg)
+
+Verdict: judged by how much Roitburd character the result has (not by faithfulness to the
+photo), r8-2k is best and r8-t750 second, so r8-2k is the default for `make start` and
+`make train` uses its settings.
+
+LoRA files are saved with PEFT keys (`lora_A` / `lora_B`). An earlier version of the trainer
+mixed key formats for ff/conv LoRAs and diffusers silently dropped the attention adapters;
+`training/fix_lora_keys.py` repairs such files.
 
 ## Measured performance (2026-11-21)
 
