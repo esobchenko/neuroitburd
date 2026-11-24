@@ -27,3 +27,9 @@ frontend/dist/
 .env.*
 .idea/
 .vscode/
+
+# Local run state (make start)
+.run/
+
+# other prompts
+NEUROITBURD_MVP_PROMPT.md

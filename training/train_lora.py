@@ -5,8 +5,14 @@ To fit a 12 GB GPU, the trainer works in stages:
 
 1. encode every caption with both text encoders, then free them;
 2. encode every image (and its mirror image) with the VAE, then free it;
-3. train LoRA adapters on the UNet attention layers. The UNet stays frozen in bf16, the
-   adapters train in fp32, with gradient checkpointing and min-SNR loss weighting.
+3. train LoRA adapters on UNet layers (``--targets``: attention only by default). The UNet
+   stays frozen in bf16, the adapters train in fp32, with gradient checkpointing and min-SNR
+   loss weighting.
+
+Options aimed at img2img use: ``--max-timestep`` trains only on the noise levels img2img
+reaches (strength 0.7 starts at about t=700 of 1000, so higher noise levels, where layout
+and subject matter form, are never used); ``--noise-offset`` lets the model learn very dark
+and very bright images. Several ``--data`` folders can be combined (e.g. paintings + crops).
 
 Checkpoints are written as ``<output>/<name>_step<N>.safetensors`` (diffusers LoRA format,
 loadable with ``NEUROITBURD_LORA_PATH`` or ``--lora``), plus ``<name>.safetensors`` at the end.
@@ -30,7 +36,11 @@ from typing import Any
 
 BASE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
 VAE_MODEL = "madebyollin/sdxl-vae-fp16-fix"
-TARGET_MODULES = ["to_q", "to_k", "to_v", "to_out.0"]
+NUM_TRAIN_TIMESTEPS = 1000
+_ATTN = ["to_q", "to_k", "to_v", "to_out.0"]
+_FF = ["ff.net.0.proj", "ff.net.2", "proj_in", "proj_out"]
+_CONV = ["conv1", "conv2"]  # ResNet block convolutions (texture, local detail)
+TARGETS = {"attn": _ATTN, "attn-ff": _ATTN + _FF, "attn-ff-conv": _ATTN + _FF + _CONV}
 
 
 @dataclass
@@ -49,35 +59,72 @@ class Sample:
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     """Parse command-line arguments."""
     p = argparse.ArgumentParser(description="Train an SDXL style LoRA (UNet only).")
-    p.add_argument("--data", type=Path, required=True)
+    p.add_argument("--data", type=Path, nargs="+", required=True, help="one or more folders")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--name", default="roitburd")
     p.add_argument("--base-model", default=BASE_MODEL)
     p.add_argument("--vae", default=VAE_MODEL)
-    p.add_argument("--rank", type=int, default=32)
-    p.add_argument("--alpha", type=int, default=32)
+    p.add_argument("--rank", type=int, default=8)
+    p.add_argument("--alpha", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--warmup", type=int, default=100)
     p.add_argument("--steps", type=int, default=2000)
-    p.add_argument("--save-every", type=int, default=500)
+    p.add_argument("--save-every", type=int, default=1000)
     p.add_argument("--snr-gamma", type=float, default=5.0)
     p.add_argument("--caption-dropout", type=float, default=0.05)
     p.add_argument("--no-flip", action="store_true", help="do not train on mirrored images")
     p.add_argument("--seed", type=int, default=0)
-    return p.parse_args(argv)
+    p.add_argument(
+        "--max-timestep",
+        type=int,
+        default=NUM_TRAIN_TIMESTEPS,
+        help="train on noise levels below this (img2img strength s uses about s*1000)",
+    )
+    p.add_argument("--noise-offset", type=float, default=0.0, help="e.g. 0.05; 0 = off")
+    p.add_argument("--targets", choices=sorted(TARGETS), default="attn", help="layers to adapt")
+    args = p.parse_args(argv)
+    if not 1 <= args.max_timestep <= NUM_TRAIN_TIMESTEPS:
+        p.error(f"--max-timestep must be between 1 and {NUM_TRAIN_TIMESTEPS}")
+    if not 0.0 <= args.noise_offset <= 0.5:
+        p.error("--noise-offset must be between 0 and 0.5")
+    return args
 
 
-def load_pairs(data: Path) -> list[tuple[Path, str]]:
-    """Return (image path, caption) pairs from the dataset folder."""
+def load_pairs(folders: list[Path]) -> list[tuple[Path, str]]:
+    """Return (image path, caption) pairs from one or more dataset folders."""
     pairs = []
-    for img in sorted(data.glob("*.png")):
-        txt = img.with_suffix(".txt")
-        if not txt.exists():
-            raise SystemExit(f"missing caption file for {img.name}")
-        pairs.append((img, txt.read_text(encoding="utf-8").strip()))
-    if not pairs:
-        raise SystemExit(f"no .png/.txt pairs in {data}")
+    for data in folders:
+        found = []
+        for img in sorted(data.glob("*.png")):
+            txt = img.with_suffix(".txt")
+            if not txt.exists():
+                raise SystemExit(f"missing caption file for {img}")
+            found.append((img, txt.read_text(encoding="utf-8").strip()))
+        if not found:
+            raise SystemExit(f"no .png/.txt pairs in {data}")
+        pairs += found
     return pairs
+
+
+def lr_factor(step: int, warmup: int, total: int) -> float:
+    """Learning-rate multiplier: linear warmup, then cosine decay to 0 at ``total``."""
+    if step < warmup:
+        return (step + 1) / warmup
+    progress = (step - warmup) / max(1, total - warmup)
+    return 0.5 * (1 + math.cos(math.pi * progress))
+
+
+def run_metadata(args: argparse.Namespace) -> dict[str, Any]:
+    """JSON-safe copy of the arguments (paths as strings)."""
+
+    def safe(v: Any) -> Any:
+        if isinstance(v, Path):
+            return str(v)
+        if isinstance(v, list):
+            return [safe(x) for x in v]
+        return v
+
+    return {k: safe(v) for k, v in vars(args).items()}
 
 
 def encode_prompts(args: argparse.Namespace, prompts: list[str], torch: Any) -> list[Any]:
@@ -142,13 +189,28 @@ def encode_images(args: argparse.Namespace, paths: list[Path], torch: Any) -> li
     return out
 
 
+def to_peft_keys(state: dict[str, Any]) -> dict[str, Any]:
+    """Rename old diffusers LoRA keys (``.lora.down/.lora.up``) to PEFT ones (``.lora_A/B``).
+
+    A file must use one key format throughout: when it mixes both, diffusers loads it as
+    PEFT and silently drops the old-format keys. ``convert_state_dict_to_diffusers`` writes
+    attention layers in the old format but conv/feed-forward layers in the PEFT one, so a
+    ``--targets attn-ff-conv`` LoRA saved that way lost all its attention adapters.
+    """
+    renamed = {}
+    for key, value in state.items():
+        key = key.replace(".lora.down.weight", ".lora_A.weight")
+        key = key.replace(".lora.up.weight", ".lora_B.weight")
+        renamed[key] = value
+    return renamed
+
+
 def save_lora(unet: Any, out_dir: Path, weight_name: str) -> Path:
-    """Save the UNet LoRA adapters in diffusers format."""
+    """Save the UNet LoRA adapters (PEFT key format, loadable by diffusers)."""
     from diffusers import StableDiffusionXLPipeline
-    from diffusers.utils import convert_state_dict_to_diffusers
     from peft.utils import get_peft_model_state_dict
 
-    state = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
+    state = to_peft_keys(get_peft_model_state_dict(unet))
     StableDiffusionXLPipeline.save_lora_weights(
         out_dir, unet_lora_layers=state, weight_name=weight_name
     )
@@ -197,22 +259,22 @@ def main(argv: list[str] | None = None) -> int:
             r=args.rank,
             lora_alpha=args.alpha,
             init_lora_weights="gaussian",
-            target_modules=TARGET_MODULES,
+            target_modules=TARGETS[args.targets],
         )
     )
     cast_training_params(unet, dtype=torch.float32)
     params = [p for p in unet.parameters() if p.requires_grad]
     n_params = sum(p.numel() for p in params)
-    print(f"      LoRA rank {args.rank}: {n_params / 1e6:.1f}M trainable parameters", flush=True)
+    print(
+        f"      LoRA rank {args.rank} on {args.targets}: {n_params / 1e6:.1f}M trainable"
+        f" parameters; timesteps < {args.max_timestep}, noise offset {args.noise_offset:g}",
+        flush=True,
+    )
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=1e-2)
 
-    def lr_at(step: int) -> float:
-        if step < args.warmup:
-            return (step + 1) / args.warmup
-        progress = (step - args.warmup) / max(1, args.steps - args.warmup)
-        return 0.5 * (1 + math.cos(math.pi * progress))
-
-    lr_sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_at)
+    lr_sched = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda step: lr_factor(step, args.warmup, args.steps)
+    )
     unet.train()
 
     order: list[int] = []
@@ -232,7 +294,11 @@ def main(argv: list[str] | None = None) -> int:
         else:
             prompt_embeds, pooled = s.prompt_embeds, s.pooled_embeds
         noise = torch.randn_like(latent)
-        t = torch.randint(0, scheduler.config.num_train_timesteps, (1,), device="cuda")
+        if args.noise_offset > 0:  # per-channel shift: teaches overall brightness changes
+            noise += args.noise_offset * torch.randn(
+                latent.shape[0], latent.shape[1], 1, 1, device="cuda"
+            )
+        t = torch.randint(0, args.max_timestep, (1,), device="cuda")
         noisy = scheduler.add_noise(latent, noise, t)
         time_ids = torch.tensor([[s.height, s.width, 0, 0, s.height, s.width]], device="cuda")
 
@@ -273,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"      saved {path}", flush=True)
 
     final = save_lora(unet, args.output, f"{args.name}.safetensors")
-    meta = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
+    meta = run_metadata(args)
     meta.update(images=len(samples), minutes=(time.time() - t0) / 60, log=log)
     (args.output / f"{args.name}_train.json").write_text(json.dumps(meta, indent=1))
     print(f"done in {(time.time() - t0) / 60:.1f} min; final LoRA: {final}", flush=True)

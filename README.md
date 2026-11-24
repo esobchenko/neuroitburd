@@ -124,6 +124,26 @@ both sides divisible by 8; for example a 4000x3000 photo becomes 1176x880.
 
 ## 5. Running the web application locally
 
+### With make (shortcut)
+
+```bash
+make start                     # backend + UI in the background, r8-2k Roitburd LoRA @ 0.8
+make start LORA_WEIGHT=1.0     # stronger style; LORA=none for plain SDXL; FAKE=1 without a GPU
+make status                    # running? model loading / ready?
+make logs                      # follow both logs (.run/*.log)
+make stop                      # stop both
+```
+
+`make start` adds the trigger phrase `rtbrd style painting` to the default prompt when a LoRA
+is loaded. Other targets: `make train` (retrain with different hyperparameters, e.g.
+`make train NAME=r16 RANK=16 LR=5e-5 STEPS=3000`; it refuses to overwrite an existing LoRA
+unless `FORCE=1` and refuses to start while the UI holds the GPU), `make compare NAME=r16`
+(checkpoint grid on `examples/acapulco.jpg`), `make stylize IMG=... STRENGTH=...`,
+`make prepare SRC=<paintings folder> FORCE=1`, `make crops SRC=<paintings folder>` (native-resolution detail crops into `data/roitburd-detail`, trained with `EXTRA_DATA=data/roitburd-detail`), `make eval NAME=<run>` (fair comparison: 2 photos × 4 seeds against no LoRA and the default `r8-2k`, in `outputs/eval/<run>/`) and `make check`. Training also takes `MAX_T=750` (only the noise levels img2img uses), `NOISE_OFFSET=0.05` and `TARGETS=attn-ff-conv`. `make help` lists every
+variable and its default.
+
+### By hand
+
 Two terminals, from the repo root:
 
 ```bash
