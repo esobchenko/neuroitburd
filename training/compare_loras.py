@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--steps", type=int, default=30)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--trigger", default=TRIGGER, help="the LoRA's trigger phrase")
     args = p.parse_args(argv)
     missing = [str(lora) for lora in args.loras if not lora.is_file()]
     if missing:
@@ -65,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         return out
 
     rows = [[labelled(fit_to_model(photo), "input"), labelled(run(DEFAULT_PROMPT), "no LoRA")]]
-    prompt = f"{TRIGGER}, {DEFAULT_PROMPT}"
+    prompt = f"{args.trigger}, {DEFAULT_PROMPT}"
     for lora in args.loras:
         pipe.load_lora_weights(str(lora.parent), weight_name=lora.name, adapter_name="cmp")
         row = []

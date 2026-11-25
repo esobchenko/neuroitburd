@@ -1,330 +1,275 @@
 # Neuroitburd
 
-Turn a photo into an expressive, postmodern painting with SDXL image-to-image, inspired by
-the painting of Oleksandr Roitburd. This MVP has a CLI, a FastAPI backend with a single-GPU
-job queue, and a small React web interface. By default it uses base SDXL
-plus a style prompt, which is only a style approximation. An experimental Roitburd style
-LoRA, trained on a private set of his paintings, is described in section 8.
+Neuroitburd turns photos into paintings. It runs SDXL image-to-image with a style LoRA that
+you train on your own corpus of paintings: an artist's body of work, a period, a school, or
+your own canvases. It includes:
 
-## 1. Overview and system requirements
+- a training toolkit: dataset preparation, a LoRA trainer that fits a 12 GB GPU, and a fair
+  evaluation grid for comparing runs
+- a CLI for single images
+- a web app: a React UI and a FastAPI backend with a single-GPU job queue
+
+The project started as an experiment with the paintings of Oleksandr Roitburd, which
+remain the reference case study (see [Case study](#case-study-oleksandr-roitburd)).
+Without a LoRA it uses base SDXL with a style prompt.
 
 ```
-photo --> image_utils (validate, fit to ~1 MP) --> pipeline (SDXL img2img, optional LoRA) --> PNG
+photo --> image_utils (validate, fit to ~1 MP) --> pipeline (SDXL img2img + LoRA) --> PNG
               ^                                        ^
             cli.py                       jobs.py (FIFO queue, one worker thread)
                                                        ^
                                    api.py (FastAPI) <-- frontend/ (React, Vite)
 ```
 
+## Requirements
+
 | | Requirement |
 |---|---|
 | OS | Linux (tested on Ubuntu 25.10) |
-| GPU | NVIDIA with 10 GB+ free VRAM for the default mode (tested: RTX 4070 SUPER, 12 GB); less works with `NEUROITBURD_OFFLOAD=model`. CPU-only works but takes minutes per image. |
-| Driver | NVIDIA driver 580+ for the default PyPI torch wheel (CUDA 13.2) |
+| GPU | NVIDIA with 10 GB+ free VRAM (tested: RTX 4070 SUPER, 12 GB). Less works with `NEUROITBURD_OFFLOAD=model`; CPU-only takes minutes per image |
+| Driver | NVIDIA 580+ for the default PyPI torch wheel (CUDA 13.2) |
 | Python | 3.11+ (tested on 3.13.7) |
-| Node | 20.19+ for the web interface (tested on 20.19.4) |
-| Disk | ~7 GB for the SDXL weights (Hugging Face cache), several GB for the Python ML stack |
+| Node | 20.19+ for the web interface |
+| Disk | about 7 GB for the SDXL weights, several GB for the Python ML stack |
 
-The model is downloaded from Hugging Face on first use (`stabilityai/stable-diffusion-xl-base-1.0`
-fp16 weights plus the `madebyollin/sdxl-vae-fp16-fix` VAE, about 7 GB, into
-`~/.cache/huggingface`, or `$HF_HOME`). Nothing is downloaded during installation or by the
-automated tests.
+On first use the SDXL base weights (fp16) and the `madebyollin/sdxl-vae-fp16-fix` VAE are
+downloaded into the Hugging Face cache (`~/.cache/huggingface` or `$HF_HOME`). Installation
+and the automated tests download nothing.
 
-## 2. Python environment and CUDA/PyTorch
+## Installation
 
 ```bash
 git clone <repo-url> neuroitburd && cd neuroitburd
 python3 -m venv .venv
-
-# Full install: backend + CUDA PyTorch + diffusers + dev tools (several GB download)
-.venv/bin/pip install -r requirements.txt
-
-# Check that PyTorch sees the GPU (should print: True 2.x.x+cuXXX)
-.venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
+.venv/bin/pip install -r requirements.txt          # backend + CUDA PyTorch + diffusers + dev tools
+.venv/bin/python -c "import torch; print(torch.cuda.is_available())"   # should print True
+cd frontend && npm install                         # web interface
 ```
 
-- The default PyPI torch wheel ships its own CUDA runtime; the system CUDA toolkit is not used.
-  With a driver older than 580, install torch from a matching index first, for example
-  `.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cu128`, then run
-  the `requirements.txt` install.
-- Lightweight install without torch, enough for the tests, the fake pipeline and UI work:
-  `.venv/bin/pip install -e ".[dev]"`.
-- transformers may print a warning that torchvision is not installed. It is harmless; SDXL
-  img2img does not need torchvision.
+- The PyPI torch wheel ships its own CUDA runtime. With a driver older than 580, first run
+  `.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cu128`.
+- `.venv/bin/pip install -e ".[dev]"` is a lightweight install without torch. It is enough
+  for the tests, the fake pipeline and UI work.
+- A transformers warning that torchvision is missing is harmless.
+- After the first download, `export HF_HUB_OFFLINE=1` keeps later runs offline.
 
-Optionally pre-download the weights so the first run starts quickly, then work offline:
+## Quick start
 
 ```bash
-.venv/bin/python -c "from neuroitburd.config import Settings; from neuroitburd.pipeline import SDXLStylizer; SDXLStylizer.load(Settings())"
-export HF_HUB_OFFLINE=1   # later runs use only the local cache
+make start LORA=none           # base SDXL; UI on http://127.0.0.1:5173; FAKE=1 runs without a GPU
+make start LORA=models/loras/my-style/my-style.safetensors TRIGGER="mystyle painting"
+make status                    # running? model loading or ready?
+make logs                      # follow both logs
+make stop
 ```
 
-## 3. Backend and frontend installation
+Open the UI, drop an image, adjust strength, steps and seed (guidance and prompts are
+under "Advanced"), press Generate and download the PNG. `make start` adds the LoRA's
+trigger phrase (`TRIGGER`) to the default prompt. Without `LORA=` it loads the case-study
+LoRA (`models/loras/r8-2k`), which is not distributed. `make help` lists every target and
+variable.
 
-Backend: done by the step above. Frontend (Node 20.19+; on Ubuntu 25.10
-`sudo apt install nodejs npm` gives Node 20.19.4):
+## CLI
 
 ```bash
-cd frontend
-npm install
-npm run build   # optional: type-check and production build into frontend/dist/
+.venv/bin/python -m neuroitburd.cli --input examples/acapulco.jpg --output outputs/result.png \
+  --strength 0.65 --steps 30 --guidance 7.0 --seed 42 \
+  --lora models/loras/my-style/my-style.safetensors --lora-weight 0.8 \
+  --prompt "my trigger, an expressive oil painting"
 ```
-
-### Configuration
-
-Everything is configured with environment variables (no config file is read):
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `NEUROITBURD_MODEL_ID` | `stabilityai/stable-diffusion-xl-base-1.0` | Base model (Hugging Face id or local folder) |
-| `NEUROITBURD_VAE_ID` | `madebyollin/sdxl-vae-fp16-fix` | VAE override; empty uses the model's own (may give black images in fp16) |
-| `NEUROITBURD_DEVICE` | `auto` | `auto`, `cuda` or `cpu`. `cuda` fails with an error if CUDA is missing; it never falls back to CPU silently |
-| `NEUROITBURD_OFFLOAD` | `none` | `none` (whole pipeline on the GPU, fastest) or `model` (CPU offload, less VRAM, slower) |
-| `NEUROITBURD_OUTPUT_DIR` | `outputs` | Results (`{job_id}.png`) and uploads (`uploads/`) |
-| `NEUROITBURD_LORA_PATH` | empty | Optional SDXL LoRA `.safetensors` file (see section 6) |
-| `NEUROITBURD_LORA_WEIGHT` | `0.8` | LoRA strength, 0 to 2 |
-| `NEUROITBURD_DEFAULT_PROMPT` | expressive postmodern oil painting... | Prompt used when a request has none |
-| `NEUROITBURD_DEFAULT_NEGATIVE_PROMPT` | photo, photorealistic, blurry... | Negative prompt used when a request has none |
-| `NEUROITBURD_MAX_UPLOAD_MB` | `20` | Upload size limit for the API |
-| `NEUROITBURD_MAX_QUEUE_SIZE` | `20` | Jobs that may wait; more get HTTP 503 |
-| `NEUROITBURD_FAKE_PIPELINE` | `0` | `1` replaces SDXL with a cheap filter (no GPU, no torch); for development |
-| `NEUROITBURD_LOG_LEVEL` | `INFO` | Python logging level |
-
-## 4. CLI usage
-
-```bash
-.venv/bin/python -m neuroitburd.cli \
-  --input examples/acapulco.jpg \
-  --output outputs/result.png \
-  --strength 0.65 --steps 30 --guidance 7.0 --seed 42
-```
-
-`examples/acapulco.jpg` is the reference photo used for manual and GPU checks; pass any path
-to use your own.
-The installed `neuroitburd` command is the same as `python -m neuroitburd.cli`.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--input`, `--output` | required | Source image (JPEG/PNG/WebP); result path (`.png`, `.jpg`, `.jpeg` or `.webp`). Missing folders are created |
+| `--input`, `--output` | required | JPEG/PNG/WebP in; `.png`, `.jpg` or `.webp` out |
 | `--strength` | 0.65 | 0 to 1: how far to move away from the photo |
-| `--steps` | 30 | 1 to 100. img2img runs `steps * strength` denoising steps, which must be at least 1 |
+| `--steps` | 30 | 1 to 100; img2img runs `steps * strength` steps |
 | `--guidance` | 7.0 | 0 to 20: how strictly to follow the prompt |
-| `--seed` | random | 0 to 2^32 - 1. Without it a random seed is chosen and printed, so any result can be reproduced |
-| `--prompt`, `--negative-prompt` | configured defaults | Override the style prompts (max 500 characters) |
-| `--lora`, `--lora-weight` | env settings | LoRA file and strength (see section 6) |
-| `--device`, `--offload` | env settings | Same as `NEUROITBURD_DEVICE` / `NEUROITBURD_OFFLOAD` |
+| `--seed` | random | printed when omitted, so every result is reproducible |
+| `--prompt`, `--negative-prompt` | configured defaults | max 500 characters |
+| `--lora`, `--lora-weight` | from settings | SDXL LoRA file and its strength |
+| `--device`, `--offload` | from settings | see Configuration |
 
-Every parameter, the resized target size and the seed are logged. All inputs are checked
-before the model loads, so a typo fails immediately. Exit codes: 0 ok, 1 unexpected error,
-2 bad arguments or input, 3 model/device/LoRA error, 4 generation or out-of-memory error.
-Add `NEUROITBURD_FAKE_PIPELINE=1` to try the CLI without a GPU.
+Images are resized to about 1 megapixel with the aspect ratio kept (a 4000x3000 photo
+becomes 1176x880). Inputs are validated before the model loads. Exit codes: 0 ok,
+1 unexpected, 2 bad input, 3 model/device/LoRA error, 4 generation or out-of-memory error.
+`make stylize IMG=photo.jpg` is a shortcut.
 
-Images are resized to about 1 megapixel (SDXL's native size) with the aspect ratio kept and
-both sides divisible by 8; for example a 4000x3000 photo becomes 1176x880.
+## Web app and API
 
-## 5. Running the web application locally
-
-### With make (shortcut)
+To run without make, use two terminals:
 
 ```bash
-make start                     # backend + UI in the background, r8-2k Roitburd LoRA at 0.8
-make start LORA_WEIGHT=1.0     # stronger style; LORA=none for plain SDXL; FAKE=1 without a GPU
-make status                    # running? model loading or ready?
-make logs                      # follow both logs (.run/*.log)
-make stop                      # stop both
-make stylize IMG=photo.jpg STRENGTH=0.7   # one image from the command line
-make check                     # tests, lint, typecheck
+.venv/bin/uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000   # model loads in 10-60 s
+cd frontend && npm run dev                                           # http://127.0.0.1:5173
 ```
 
-`make start` adds the trigger phrase `rtbrd style painting` to the default prompt when a LoRA
-is loaded. The training targets (`prepare`, `crops`, `train`, `compare`, `eval`) are
-described in section 8. `make help` lists every target, variable and default.
-
-### By hand
-
-Two terminals, from the repo root:
-
-```bash
-# Terminal 1: backend on http://127.0.0.1:8000 (the model loads in the background, 10-60 s)
-.venv/bin/uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000
-
-# Terminal 2: web interface on http://127.0.0.1:5173 (forwards /api to the backend)
-cd frontend && npm run dev
-```
-
-Open http://127.0.0.1:5173, drop or choose an image, adjust strength, steps and seed
-(guidance and prompts are under "Advanced"), press Generate, and download the PNG. The header
-shows whether the model is loading, ready (with the GPU name) or failed. To work on the UI
-without a GPU, start the backend with `NEUROITBURD_FAKE_PIPELINE=1`. Set
-`NEUROITBURD_BACKEND_URL` to point the dev server at a backend elsewhere.
-
-**Run exactly one backend process.** The model is loaded once, in a worker thread, and an
-in-process FIFO queue runs one generation at a time on the GPU. Never use `--workers N` (each
-worker would load its own 8 GB copy and they would fight over the GPU) or `--reload` with the
-real model. Keep the backend on `127.0.0.1`: there is no authentication.
-
-### REST API
+Run exactly one backend process. The model is loaded once, and a FIFO queue runs one
+generation at a time. `--workers N` would load a separate 8 GB copy per worker, and
+`--reload` would reload the model on every code change. There is no authentication, so
+keep the backend on `127.0.0.1`.
 
 | Method | Path | Result |
 |---|---|---|
-| GET | `/api/health` | `status` (`starting`/`ok`/`error`), model status and error, model id, device, LoRA, GPU name and memory (once the model is loaded), queue size |
-| POST | `/api/generate` | multipart `image` (JPEG/PNG/WebP, max 20 MB) plus optional `strength`, `steps`, `guidance`, `seed`, `prompt`, `negative_prompt`; returns 202 with `job_id` |
-| GET | `/api/jobs/{job_id}` | `status` (`queued`/`processing`/`completed`/`failed`), `progress` (0-1), `error`, `output_url`, `params` (including the seed used), timestamps |
+| GET | `/api/health` | status, model state, device, LoRA, GPU, queue size |
+| POST | `/api/generate` | multipart `image` plus optional `strength`, `steps`, `guidance`, `seed`, `prompt`, `negative_prompt`; returns 202 with `job_id` |
+| GET | `/api/jobs/{job_id}` | `status`, `progress`, `error`, `output_url`, `params` |
 | GET | `/api/images/{image_id}` | the generated PNG |
 
-```bash
-curl -F image=@photo.jpg -F strength=0.65 -F seed=42 http://127.0.0.1:8000/api/generate
-curl http://127.0.0.1:8000/api/jobs/<job_id>
-curl -o result.png http://127.0.0.1:8000/api/images/<job_id>
-```
+Errors are JSON `{"detail": "..."}` with status 422 (invalid input), 413 (too large),
+415 (not an image), 404 (unknown id) or 503 (queue full or model unavailable).
 
-Errors are JSON `{"detail": "..."}`: 422 invalid parameters or image (too small, corrupt,
-extreme aspect ratio), 413 file too large, 415 not a JPEG/PNG/WebP image, 404 unknown job or
-image, 503 queue full, model failed to load, or server shutting down. A failed job reports
-its error in `/api/jobs/{job_id}` and does not block later jobs.
+## Configuration
 
-## 6. Loading a LoRA adapter
+All settings are environment variables:
 
-The pipeline already supports one LoRA adapter, applied when the model loads:
+| Variable | Default | Meaning |
+|---|---|---|
+| `NEUROITBURD_MODEL_ID` | `stabilityai/stable-diffusion-xl-base-1.0` | Base model (Hub id or local folder) |
+| `NEUROITBURD_VAE_ID` | `madebyollin/sdxl-vae-fp16-fix` | VAE override; empty uses the model's own |
+| `NEUROITBURD_DEVICE` | `auto` | `auto`, `cuda` or `cpu`; `cuda` never falls back to CPU |
+| `NEUROITBURD_OFFLOAD` | `none` | `model` offloads to CPU: less VRAM, slower |
+| `NEUROITBURD_LORA_PATH` | empty | SDXL LoRA `.safetensors` file |
+| `NEUROITBURD_LORA_WEIGHT` | `0.8` | LoRA strength, 0 to 2 |
+| `NEUROITBURD_DEFAULT_PROMPT` | expressive postmodern oil painting... | Prompt when a request has none |
+| `NEUROITBURD_DEFAULT_NEGATIVE_PROMPT` | photo, photorealistic, blurry... | Negative prompt when a request has none |
+| `NEUROITBURD_OUTPUT_DIR` | `outputs` | Results and uploads |
+| `NEUROITBURD_MAX_UPLOAD_MB` | `20` | API upload limit |
+| `NEUROITBURD_MAX_QUEUE_SIZE` | `20` | Waiting jobs; more get HTTP 503 |
+| `NEUROITBURD_FAKE_PIPELINE` | `0` | `1` replaces SDXL with a cheap filter (no GPU, no torch) |
+| `NEUROITBURD_LOG_LEVEL` | `INFO` | Python logging level |
 
-```bash
-# models/ is git-ignored; any SDXL LoRA file works
+Any LoRA trained for SDXL 1.0 base works, including kohya/A1111 exports. A LoRA for another
+base model either fails to load or has no visible effect (check the backend log for
+unmatched keys). Typical weights are 0.6 to 1.0. If the LoRA uses a trigger phrase, put it
+in the prompt.
 
-# Web app: set before starting the backend (restart to change it)
-NEUROITBURD_LORA_PATH=models/loras/r8-2k/r8-2k.safetensors NEUROITBURD_LORA_WEIGHT=0.8 \
-  .venv/bin/uvicorn neuroitburd.api:app --host 127.0.0.1 --port 8000
+## Training a style LoRA on your own corpus
 
-# CLI
-.venv/bin/python -m neuroitburd.cli --input photo.jpg --output outputs/r.png \
-  --lora models/loras/r8-2k/r8-2k.safetensors --lora-weight 0.8
-```
+The trainer works with any folder of images in a consistent style. Use 30 to 200
+paintings, as large and sharp as you have, with no frames, watermarks or photos of rooms.
 
-- The file must be a LoRA trained for **SDXL 1.0 base**, in `.safetensors` format (the
-  formats diffusers' `load_lora_weights` reads, including kohya/A1111 exports). A LoRA for
-  another base model (SD 1.5, SD 3, Flux) either fails with a "could not apply LoRA" error
-  or loads with no visible effect; in that case diffusers logs a warning about unmatched
-  keys, so check the backend log.
-- `peft` is required; it is part of `requirements.txt`.
-- If the LoRA was trained with a trigger word, put it in the prompt: set
-  `NEUROITBURD_DEFAULT_PROMPT="rtbrd style painting, an expressive postmodern oil painting..."`, or
-  type it in the prompt field / `--prompt`.
-- Typical weights are 0.6 to 1.0; above 1 tends to over-bake. `/api/health` shows the loaded
-  LoRA name and weight.
-- A missing file is reported before the 7 GB model load: CLI exit code 3, or health status
-  `error` with the message in the web app.
-
-## 7. Known limitations
-
-- **Style approximation only.** Base SDXL plus a prompt is not Roitburd's style, and the
-  experimental LoRA (section 8) only moves the output towards it. Flat, graphic images
-  change little at strength 0.65; for photos try 0.65 to 0.8.
-- **GPU memory.** PyTorch needs about 8 GiB at peak, but with its cache and the desktop the
-  whole 12 GB card is nearly full during generation (see below), so there is little room for
-  other GPU applications (games, browsers with GPU video, a second model). If generation
-  fails with "GPU ran out of memory", close them or set `NEUROITBURD_OFFLOAD=model` (slower,
-  much less VRAM). An out-of-memory error fails only that job; the server keeps running.
-- **Output size** is about 1 megapixel, not the original resolution. Inputs must be 64 to
-  8192 px per side, aspect ratio at most 4:1, and (in the API) at most 20 MB.
-- **Jobs are in memory.** Restarting the backend forgets jobs (files in `outputs/` remain),
-  and there is no automatic cleanup of `outputs/` or `outputs/uploads/`. Jobs cannot be
-  cancelled.
-- **Single process, single GPU, local use.** No authentication, no multi-GPU, no horizontal
-  scaling. Uploads without a `Content-Length` header (chunked) are buffered to a temporary
-  file before the size limit is applied.
-- **CPU mode** (`NEUROITBURD_DEVICE=cpu`) runs in fp32 and takes several minutes per image.
-- **Node 20** reached end of upstream support in April 2026. The frontend should also work
-  on Node 22 or 24 (not tested yet).
-
-## 8. Experimental: Roitburd style LoRA
-
-A small SDXL LoRA trained on Roitburd paintings. The paintings are copyrighted, so the
-dataset (`data/`) and the LoRA files (`models/`) are git-ignored and are for personal,
-non-commercial experiments only. The current default, used by `make start`, is
-`models/loras/r8-2k/r8-2k.safetensors` at weight 0.8 with the trigger phrase
-`rtbrd style painting`.
-
-### Training workflow
+**1. Prepare the dataset.** Each image is trimmed, fitted to about 1 MP and captioned
+`"<trigger>, <title>"`. The title comes from the file name, so descriptive names help. Pick
+a trigger phrase that is not a real word, so it means only your style.
 
 ```bash
-make prepare SRC=<paintings folder> FORCE=1   # fit to ~1 MP, captions, into data/roitburd
-make crops SRC=<paintings folder>             # optional: detail crops into data/roitburd-detail
-make train NAME=my-run                        # rank 8, 2000 steps, about 17 min on a 4070 SUPER
-make compare NAME=my-run                      # checkpoints x weights on examples/acapulco.jpg
-make eval NAME=my-run                         # fair grid: 2 photos x 4 seeds vs no LoRA and r8-2k
+make prepare SRC=~/paintings/my-artist DATA=data/my-artist TRIGGER="mystyle painting"
+make crops   SRC=~/paintings/my-artist CROPS=data/my-artist-detail TRIGGER="mystyle painting"   # optional
 ```
 
-`make train` refuses to overwrite an existing LoRA unless `FORCE=1`, and refuses to start
-while the web UI holds the GPU (`make stop` first). Useful options: `RANK`, `LR`, `STEPS`,
-`MAX_T=750` (train only on the noise levels img2img uses), `NOISE_OFFSET=0.05`,
-`TARGETS=attn-ff-conv` (also train feed-forward and conv layers) and
-`EXTRA_DATA=data/roitburd-detail` (add the detail crops). Results of `make eval` go to
-`outputs/eval/<run>/`.
+`make crops` cuts native-resolution 1024x1024 detail crops from large, sharp sources. They
+teach brushwork and texture and make up at most half of the dataset.
 
-All runs below use 175 paintings, AdamW at 1e-4 with warmup and cosine decay, min-SNR
-gamma 5, 5% caption dropout and batch size 1. The grids show `examples/acapulco.jpg` at
-strength 0.7, 30 steps, LoRA weight 0.8 (0.6 for r64), seeds 42, 7, 1234 and 2026.
+**2. Train.** The default recipe is rank 8 on the attention layers, 2000 steps, AdamW at
+1e-4 with warmup and cosine decay, min-SNR gamma 5 and 5% caption dropout. It takes about
+17 minutes on an RTX 4070 SUPER.
+
+```bash
+make stop    # training needs the GPU that the web app holds
+make train NAME=my-artist DATA=data/my-artist
+make train NAME=my-artist-detail DATA=data/my-artist EXTRA_DATA=data/my-artist-detail
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `RANK`, `LR`, `STEPS` | 8, 1e-4, 2000 | capacity, learning rate, length |
+| `MAX_T` | 1000 | `750` trains only the noise levels img2img uses |
+| `NOISE_OFFSET` | 0 | `0.05` helps with very dark or very light paintings |
+| `TARGETS` | `attn` | `attn-ff` or `attn-ff-conv` also trains feed-forward and conv layers |
+| `EXTRA_DATA` | empty | more dataset folders, e.g. the detail crops |
+
+Results go to `models/loras/<NAME>/`: the final LoRA, a checkpoint every 1000 steps
+(`SAVE_EVERY`), the settings and the loss log. `make train` refuses to overwrite an
+existing run unless `FORCE=1`.
+
+**3. Evaluate.** The seed changes the picture more than the LoRA does, so compare runs on
+the same photos and seeds:
+
+```bash
+make eval NAME=my-artist TRIGGER="mystyle painting" \
+  EVAL_MODELS="none models/loras/my-artist/my-artist.safetensors models/loras/my-artist-detail/my-artist-detail.safetensors"
+make compare NAME=my-artist        # the run's checkpoints x weights on one photo
+```
+
+`make eval` renders every model in `EVAL_MODELS` (`none`, `path` or `path@weight`) on two
+photos x 4 seeds into `outputs/eval/<NAME>/`.
+
+**4. Use it.** Run `make start LORA=models/loras/my-artist/my-artist.safetensors TRIGGER="mystyle painting"`,
+or pass the file to the CLI with `--lora`.
+
+## Case study: Oleksandr Roitburd
+
+We trained on 175 Roitburd paintings, plus 62 detail crops in some runs, with the trigger
+`rtbrd style painting`. The paintings are copyrighted, so the dataset and the LoRA files
+are not part of this repository. All grids show `examples/acapulco.jpg` at strength 0.7,
+30 steps, LoRA weight 0.8 (0.6 for r64) and seeds 42, 7, 1234 and 2026.
 
 ### Sweep 1: rank and steps (2026-11-23)
 
-| Run | Rank / alpha | LR | Steps | Notes |
+| Run | Rank / alpha | LR | Steps | Result |
 |---|---|---|---|---|
 | no LoRA | | | | base SDXL with the style prompt |
 | r8 | 8 / 8 | 1e-4 | 4000 | clear Roitburd look |
 | r16-lr5e5 | 16 / 16 | 5e-5 | 3000 | almost the same as r8 |
-| r64 | 64 / 32 | 1e-4 | 4000 | overfits: invents objects and loses the composition |
+| r64 | 64 / 32 | 1e-4 | 4000 | overfits: invents objects, loses the composition |
 
 ![Sweep 1 on acapulco.jpg](docs/images/sweep1_acapulco.jpg)
 
-Rank and step count barely matter between 8 and 32; rank 8 looks the same as rank 32 at a
-quarter of the file size. The seed changes the picture more than the LoRA does, which is why
-`make eval` compares every model over the same 4 seeds.
+Rank barely matters between 8 and 32, so rank 8 gives the same result at a quarter of the
+file size.
 
 ### Sweep 2: training options (2026-11-24)
 
-All rank 8, 2000 steps.
+All runs are rank 8 with 2000 steps.
 
-| Run | Data | Max timestep | Noise offset | Layers | Result |
+| Run | Data | `MAX_T` | `NOISE_OFFSET` | `TARGETS` | Result |
 |---|---|---|---|---|---|
-| r8 (sweep 1) | paintings | 1000 | 0 | attention | reference, 4000 steps |
-| r8-2k | paintings | 1000 | 0 | attention | slightly more faithful than r8; strongest Roitburd character |
-| r8-t750 | paintings | 750 | 0.05 | attention | removes the learned signature, still turns people nude |
-| r8-detail | paintings + 62 detail crops | 750 | 0.05 | attention | best balance: keeps people and clothing in 3 of 4 seeds, richer texture |
-| r8-ff | paintings + 62 detail crops | 750 | 0.05 | attention, ff, conv | most faithful to the photo, mildest style |
+| r8 (sweep 1) | paintings | 1000 | 0 | attn | reference, 4000 steps |
+| r8-2k | paintings | 1000 | 0 | attn | strongest Roitburd character |
+| r8-t750 | paintings | 750 | 0.05 | attn | drops the learned signature, still undresses people |
+| r8-detail | + detail crops | 750 | 0.05 | attn | best balance: keeps clothing in 3 of 4 seeds, richer texture |
+| r8-ff | + detail crops | 750 | 0.05 | attn-ff-conv | most faithful to the photo, mildest style |
 
 ![Sweep 2 on acapulco.jpg](docs/images/sweep2_acapulco.jpg)
 
-Verdict: judged by how much Roitburd character the result has (not by faithfulness to the
-photo), r8-2k is best and r8-t750 second, so r8-2k is the default for `make start` and
-`make train` uses its settings.
+We judged the runs by how much of the artist's character the results have, not by how
+faithful they stay to the photo. By that measure r8-2k is best and r8-t750 second, so
+r8-2k's settings are the `make train` defaults and r8-2k is the `make start` default. If you care more about faithfulness to the photo, try r8-detail or r8-ff.
 
-LoRA files are saved with PEFT keys (`lora_A` / `lora_B`). An earlier version of the trainer
-mixed key formats for ff/conv LoRAs and diffusers silently dropped the attention adapters;
-`training/fix_lora_keys.py` repairs such files.
+## Performance
 
-## Measured performance (2026-11-21)
-
-RTX 4070 SUPER (12 GB), fp16, whole pipeline on CUDA (`NEUROITBURD_OFFLOAD=none`),
-SDXL base 1.0 + `madebyollin/sdxl-vae-fp16-fix`, no LoRA:
+Measured on an RTX 4070 SUPER (12 GB) in fp16 with the whole pipeline on CUDA and no LoRA
+(2026-11-21). Reproduce it with `HF_HUB_OFFLINE=1 .venv/bin/pytest -m gpu -s`.
 
 | Metric | Value |
 |---|---|
-| Model load (from local cache, cold) | 10.7 s |
-| Generation, 1176x880, 30 steps at strength 0.65 (19 effective steps) | 5.6 to 6.2 s |
-| Peak VRAM allocated by PyTorch (`torch.cuda.max_memory_allocated`) | 8.05 GiB |
-| Total GPU memory in use during a web-UI generation (`nvidia-smi`, includes the desktop's ~1.7 GB and PyTorch's cache) | up to 11.5 of 11.6 GiB |
-| Web UI, click Generate to result shown (same settings, seed 42) | 6.3 s (6.0 s on the server) |
+| Model load from the local cache | 10.7 s |
+| Generation, 1176x880, 30 steps at strength 0.65 | 5.6 to 6.2 s |
+| Peak VRAM allocated by PyTorch | 8.05 GiB |
+| Total GPU memory in use, including the desktop | up to 11.5 of 11.6 GiB |
 
-Reproduce the first rows with `HF_HUB_OFFLINE=1 .venv/bin/pytest -m gpu -s`.
+## Limitations
+
+- **Style, not reproduction.** A LoRA moves the output towards a style; it does not repaint
+  the photo the way the artist would. Flat, graphic images change little; for photos use
+  strength 0.65 to 0.8.
+- **GPU memory.** The 12 GB card is nearly full during generation. If a job fails with
+  "GPU ran out of memory", close other GPU apps or set `NEUROITBURD_OFFLOAD=model`. Only
+  that job fails; the server keeps running.
+- **Output size** is about 1 MP. Inputs must be 64 to 8192 px per side, aspect ratio at
+  most 4:1, at most 20 MB in the API.
+- **Local use only.** One process and one GPU, no authentication. Jobs live in memory and
+  cannot be cancelled, and `outputs/` is never cleaned automatically.
+- **Copyright.** Training on an artist's work does not give you rights to it. Check the
+  license before you share a dataset or a LoRA trained on it.
 
 ## Development
 
 ```bash
 .venv/bin/pip install -e ".[dev]"   # no torch needed
-.venv/bin/pytest                    # GPU tests are skipped by default; no downloads
-.venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/mypy
+make check                          # pytest (no GPU, no downloads), ruff, mypy
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-`AGENTS.md` describes the working agreement and module boundaries, and
-`IMPLEMENTATION_PLAN.md` the milestones and design decisions.
+`AGENTS.md` describes the working agreement and module boundaries.
+`IMPLEMENTATION_PLAN.md` describes the milestones and design decisions.

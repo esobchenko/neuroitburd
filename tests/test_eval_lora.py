@@ -10,9 +10,11 @@ from eval_lora import (
     HEAD,
     PAD,
     SIDE,
+    TRIGGER,
     ModelSpec,
     build_grid,
     main,
+    parse_args,
     parse_model,
     parse_photo,
     unique,
@@ -81,3 +83,9 @@ def test_main_reports_missing_files_before_loading(tmp_path: Path) -> None:
 def test_main_rejects_bad_spec(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="bad LoRA weight"):
         main(["--tag", "t", "--out-dir", str(tmp_path), "--models", "a.safetensors@x"])
+
+
+def test_trigger_defaults_to_case_study_and_can_be_overridden() -> None:
+    assert parse_args(["--models", "none", "--tag", "t"]).trigger == TRIGGER
+    args = parse_args(["--models", "none", "--tag", "t", "--trigger", "mystyle painting"])
+    assert args.trigger == "mystyle painting"

@@ -8,7 +8,7 @@ SHELL := /bin/bash
 PY       := .venv/bin/python
 VITE     := frontend/node_modules/.bin/vite
 RUN_DIR  := .run
-TRIGGER  := rtbrd style painting
+TRIGGER  ?= rtbrd style painting
 export HF_HUB_OFFLINE ?= 1
 
 # ---- web UI ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ help: ## Show this help
 	@echo
 	@echo "UI:       LORA=$(LORA_ON) LORA_WEIGHT=$(LORA_WEIGHT) FAKE=$(FAKE)"
 	@echo "          BACKEND_PORT=$(BACKEND_PORT) FRONTEND_PORT=$(FRONTEND_PORT)"
-	@echo "Training: NAME=$(NAME) DATA=$(DATA) OUT=$(OUT)"
+	@echo "Training: NAME=$(NAME) DATA=$(DATA) OUT=$(OUT) TRIGGER='$(TRIGGER)'"
 	@echo "          STEPS=$(STEPS) SAVE_EVERY=$(SAVE_EVERY) RANK=$(RANK) ALPHA=$(ALPHA) LR=$(LR)"
 	@echo "          WARMUP=$(WARMUP) SNR_GAMMA=$(SNR_GAMMA) CAPTION_DROPOUT=$(CAPTION_DROPOUT)"
 	@echo "          SEED=$(SEED) NO_FLIP=$(NO_FLIP) FORCE=$(FORCE)"
@@ -148,14 +148,14 @@ prepare: ## Rebuild the training set from a paintings folder (SRC=..., DATA=...)
 	@if [ -d "$(DATA)" ] && [ "$(FORCE)" != 1 ]; then \
 	  echo "$(DATA) exists; pass FORCE=1 to rebuild it"; exit 1; fi
 	rm -rf "$(DATA)"
-	$(PY) training/prepare_dataset.py --input "$(strip $(SRC))" --output "$(DATA)"
+	$(PY) training/prepare_dataset.py --input "$(strip $(SRC))" --output "$(DATA)" --trigger "$(TRIGGER)"
 
 crops: ## Cut native-resolution detail crops from SRC into CROPS (FORCE=1 to rebuild)
 	@[ -n "$(strip $(SRC))" ] || { echo "set SRC=<folder with the paintings>"; exit 1; }
 	@if [ -d "$(CROPS)" ] && [ "$(FORCE)" != 1 ]; then \
 	  echo "$(CROPS) exists; pass FORCE=1 to rebuild it"; exit 1; fi
 	rm -rf "$(CROPS)"
-	$(PY) training/prepare_dataset.py --input "$(strip $(SRC))" --crops-only --crops-output "$(CROPS)" \
+	$(PY) training/prepare_dataset.py --input "$(strip $(SRC))" --crops-only --crops-output "$(CROPS)" --trigger "$(TRIGGER)" \
 	  $(foreach p,$(CROPS_SINGLE),--single-crop $(p))
 
 train: ## Train a LoRA (NAME=, STEPS=, RANK=, LR=, ...; see 'make help')
@@ -173,14 +173,14 @@ train: ## Train a LoRA (NAME=, STEPS=, RANK=, LR=, ...; see 'make help')
 eval: ## Fair test: EVAL_MODELS x 2 photos x 4 seeds -> outputs/eval/<EVAL_TAG>/
 	$(require_gpu_free)
 	$(PY) training/eval_lora.py --tag "$(EVAL_TAG)" --models $(EVAL_MODELS) --seeds $(EVAL_SEEDS) \
-	  --weight $(LORA_WEIGHT) --steps $(GEN_STEPS)
+	  --weight $(LORA_WEIGHT) --steps $(GEN_STEPS) --trigger "$(TRIGGER)"
 
 compare: ## Grid of NAME's checkpoints on IMG vs no LoRA -> outputs/<NAME>_grid.jpg
 	$(require_gpu_free)
 	$(PY) training/compare_loras.py --image "$(IMG)" --weights $(WEIGHTS) \
 	  --strength $(STRENGTH) --steps $(GEN_STEPS) --seed $(GEN_SEED) \
 	  --loras $$(ls "$(OUT)"/$(NAME)_step*.safetensors | sort -V) \
-	  --output outputs/$(NAME)_grid.jpg
+	  --output outputs/$(NAME)_grid.jpg --trigger "$(TRIGGER)"
 
 stylize: ## Stylize one image with LORA -> outputs/<image>_<NAME>.png (IMG=, STRENGTH=)
 	$(require_gpu_free)

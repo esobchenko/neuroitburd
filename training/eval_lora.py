@@ -130,6 +130,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--steps", type=int, default=30)
     p.add_argument("--tag", required=True, help="name of this evaluation (output folder)")
     p.add_argument("--out-dir", type=Path, default=Path("outputs/eval"))
+    p.add_argument("--trigger", default=TRIGGER, help="the LoRAs' trigger phrase")
     return p.parse_args(argv)
 
 
@@ -163,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         if m.path:
             pipe.load_lora_weights(str(m.path.parent), weight_name=m.path.name, adapter_name="e")
             pipe.set_adapters(["e"], adapter_weights=[m.weight])
-            prompt = f"{TRIGGER}, {DEFAULT_PROMPT}"
+            prompt = f"{args.trigger}, {DEFAULT_PROMPT}"
         else:
             prompt = DEFAULT_PROMPT
         for p in photos:
